@@ -17,7 +17,7 @@ export const Hero = async ({ dictionary }: HeroProps) => (
         <div>
           <Feed queries={[blog.latestPostQuery]}>
             {/* biome-ignore lint/suspicious/useAwait: "Server Actions must be async" */}
-            {async ([data]) => {
+            {async ([data]: [any]) => {
               'use server';
 
               return (
