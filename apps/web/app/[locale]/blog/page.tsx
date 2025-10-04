@@ -8,31 +8,25 @@ import { JsonLd } from '@repo/seo/json-ld';
 import { createMetadata } from '@repo/seo/metadata';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-
 type BlogProps = {
   params: Promise<{
     locale: string;
   }>;
 };
-
 export const generateMetadata = async ({
   params,
 }: BlogProps): Promise<Metadata> => {
   const { locale } = await params;
   const dictionary = await getDictionary(locale);
-
   return createMetadata(dictionary.web.blog.meta);
 };
-
 const BlogIndex = async ({ params }: BlogProps) => {
   const { locale } = await params;
   const dictionary = await getDictionary(locale);
-
   const jsonLd: WithContext<Blog> = {
     '@type': 'Blog',
     '@context': 'https://schema.org',
   };
-
   return (
     <>
       <JsonLd code={jsonLd} />
@@ -45,14 +39,12 @@ const BlogIndex = async ({ params }: BlogProps) => {
           </div>
           <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
             <Feed queries={[blog.postsQuery]}>
-              {async ([data]) => {
+              {async ([data]: [any]) => {
                 'use server';
-
-                if (!data.blog.posts.items.length) {
+                if (!data?.blog?.posts?.items?.length) {
                   return null;
                 }
-
-                return data.blog.posts.items.map((post, index) => (
+                return data.blog.posts.items.map((post: any, index: number) => (
                   <Link
                     href={`/blog/${post._slug}`}
                     className={cn(
@@ -94,5 +86,4 @@ const BlogIndex = async ({ params }: BlogProps) => {
     </>
   );
 };
-
 export default BlogIndex;
