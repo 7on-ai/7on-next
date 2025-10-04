@@ -8,50 +8,44 @@ import { createMetadata } from '@repo/seo/metadata';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-
 type LegalPageProperties = {
   readonly params: Promise<{
     slug: string;
   }>;
 };
-
 export const generateMetadata = async ({
   params,
 }: LegalPageProperties): Promise<Metadata> => {
   const { slug } = await params;
-  const post = await legal.getPost(slug);
-
+  const post = await legal.getPost(slug) as any;
   if (!post) {
     return {};
   }
-
   return createMetadata({
     title: post._title,
     description: post.description,
   });
 };
-
 export const generateStaticParams = async (): Promise<{ slug: string }[]> => {
-  const posts = await legal.getPosts();
+  const posts = await legal.getPosts() as any[];
+
+  if (!posts || posts.length === 0) {
+    return [];
+  }
 
   return posts.map(({ _slug }) => ({ slug: _slug }));
 };
-
 const LegalPage = async ({ params }: LegalPageProperties) => {
   const { slug } = await params;
-
   return (
     <Feed queries={[legal.postQuery(slug)]}>
       {/* biome-ignore lint/suspicious/useAwait: "Server Actions must be async" */}
       {async ([data]: [any]) => {
         'use server';
-
         const page = data.legalPages.item;
-
         if (!page) {
           notFound();
         }
-
         return (
           <div className="container max-w-5xl py-16">
             <Link
@@ -87,5 +81,4 @@ const LegalPage = async ({ params }: LegalPageProperties) => {
     </Feed>
   );
 };
-
 export default LegalPage;
