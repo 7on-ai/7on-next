@@ -15,21 +15,7 @@ export const Hero = async ({ dictionary }: HeroProps) => (
     <div className="container mx-auto">
       <div className="flex flex-col items-center justify-center gap-8 py-20 lg:py-40">
         <div>
-          <Feed queries={[blog.latestPostQuery]}>
-            {/* biome-ignore lint/suspicious/useAwait: "Server Actions must be async" */}
-            {async ([data]: [any]) => {
-              'use server';
-
-              return (
-{/* <Button variant="secondary" size="sm" className="gap-4" asChild>
-  <Link href={`/blog/${data.blog.posts.item?._slug}`}>
-    {dictionary.web.home.hero.announcement}{' '}
-    <MoveRight className="h-4 w-4" />
-  </Link>
-</Button> */}
-              );
-            }}
-          </Feed>
+  {/* Announcement button removed temporarily */}
         </div>
         <div className="flex flex-col gap-4">
           <h1 className="max-w-2xl text-center font-regular text-5xl tracking-tighter md:text-7xl">
