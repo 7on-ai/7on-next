@@ -45,14 +45,14 @@ const BlogIndex = async ({ params }: BlogProps) => {
           </div>
           <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
             <Feed queries={[blog.postsQuery]}>
-              {async ([data]: [any]) => {
+              {async ([data]) => {
                 'use server';
 
                 if (!data.blog.posts.items.length) {
                   return null;
                 }
 
-                return data.blog.posts.items.map((post: any, index: number) => (
+                return data.blog.posts.items.map((post, index) => (
                   <Link
                     href={`/blog/${post._slug}`}
                     className={cn(
