@@ -52,7 +52,7 @@ const BlogIndex = async ({ params }: BlogProps) => {
                   return null;
                 }
 
-                return data.blog.posts.items.map((post, index) => (
+                return data.blog.posts.items.map((post: any, index: number) => (
                   <Link
                     href={`/blog/${post._slug}`}
                     className={cn(
