@@ -9,3 +9,4 @@ type FeedProps = {
 export const Feed = ({ queries, children }: FeedProps) => {
   return null;
 };
+//export { Pump as Feed } from 'basehub/react-pump';
