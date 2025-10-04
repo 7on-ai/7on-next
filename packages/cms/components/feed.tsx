@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 
 type FeedProps = {
   queries: any[];
-  children: (data: any[]) => ReactNode | Promise<ReactNode>;
+  children: (...data: any[]) => ReactNode | Promise<ReactNode>; // เปลี่ยนเป็น ...data
 };
 
 // Mock Feed component - replace with actual Pump from basehub when ready
