@@ -116,7 +116,7 @@ const BlogPost = async ({ params }: BlogPostProperties) => {
                       <Body
                         content={page.body.json.content}
                         components={{
-                          pre: ({ code, language }) => {
+                          pre: ({ code, language }: any) => {
                             return (
                               <CodeBlock
                                 theme="vesper"
