@@ -28,7 +28,7 @@ export const Footer = () => (
         {
           title: 'Legal',
           description: 'We stay on top of the latest legal requirements.',
-          items: data.legalPages.items.map((post) => ({
+          items: data.legalPages.items.map((post: any) => ({
             title: post._title,
             href: `/legal/${post._slug}`,
           })),
