@@ -28,9 +28,8 @@ export const generateMetadata = async ({
   params,
 }: BlogPostProperties): Promise<Metadata> => {
   const { slug } = await params;
-  const post = await blog.getPost(slug);
+  const post = await blog.getPost(slug) as any;
 
-  // FIX: Add null check for mock
   if (!post) {
     return {};
   }
@@ -43,9 +42,8 @@ export const generateMetadata = async ({
 };
 
 export const generateStaticParams = async (): Promise<{ slug: string }[]> => {
-  const posts = await blog.getPosts();
+  const posts = await blog.getPosts() as any[];
 
-  // Add type guard
   if (!posts || posts.length === 0) {
     return [];
   }
