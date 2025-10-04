@@ -6,7 +6,7 @@ import Link from 'next/link';
 
 export const Footer = () => (
   <Feed queries={[legal.postsQuery]}>
-    {async ([data]) => {
+    {async ([data]: [any]) => {
       'use server';
 
       const navigationItems = [
