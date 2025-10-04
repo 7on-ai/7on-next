@@ -83,7 +83,7 @@ export const Footer = () => (
                         ) : (
                           <p className="text-xl">{item.title}</p>
                         )}
-                        {item.items?.map((subItem) => (
+                        {item.items?.map((subItem: any) => (
                           <Link
                             key={subItem.title}
                             href={subItem.href}
