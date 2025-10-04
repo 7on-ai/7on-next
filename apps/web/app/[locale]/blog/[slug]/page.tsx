@@ -45,6 +45,11 @@ export const generateMetadata = async ({
 export const generateStaticParams = async (): Promise<{ slug: string }[]> => {
   const posts = await blog.getPosts();
 
+  // Add type guard
+  if (!posts || posts.length === 0) {
+    return [];
+  }
+
   return posts.map(({ _slug }) => ({ slug: _slug }));
 };
 
