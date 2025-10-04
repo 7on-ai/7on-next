@@ -45,7 +45,7 @@ const BlogIndex = async ({ params }: BlogProps) => {
           </div>
           <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
             <Feed queries={[blog.postsQuery]}>
-              {async ([data]) => {
+              {async ([data]: [any]) => {
                 'use server';
 
                 if (!data.blog.posts.items.length) {
