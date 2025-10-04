@@ -21,12 +21,12 @@ export const Hero = async ({ dictionary }: HeroProps) => (
               'use server';
 
               return (
-                <Button variant="secondary" size="sm" className="gap-4" asChild>
-                  <Link href={`/blog/${data.blog.posts.item?._slug}`}>
-                    {dictionary.web.home.hero.announcement}{' '}
-                    <MoveRight className="h-4 w-4" />
-                  </Link>
-                </Button>
+{/* <Button variant="secondary" size="sm" className="gap-4" asChild>
+  <Link href={`/blog/${data.blog.posts.item?._slug}`}>
+    {dictionary.web.home.hero.announcement}{' '}
+    <MoveRight className="h-4 w-4" />
+  </Link>
+</Button> */}
               );
             }}
           </Feed>
