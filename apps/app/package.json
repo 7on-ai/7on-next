@@ -33,7 +33,10 @@
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "require-in-the-middle": "^7.5.2",
-    "zod": "^3.25.28"
+    "zod": "^3.25.28",
+    "@supabase/supabase-js": "latest",
+    "@supabase/ssr": "latest",
+    "@repo/database": "workspace:*"
   },
   "devDependencies": {
     "@repo/testing": "workspace:*",
