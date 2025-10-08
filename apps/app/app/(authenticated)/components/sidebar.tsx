@@ -1,6 +1,6 @@
 'use client';
 
-import { OrganizationSwitcher, UserButton } from '@repo/auth/client';
+import { createClient } from '@repo/auth/client';
 import { ModeToggle } from '@repo/design-system/components/mode-toggle';
 import { Button } from '@repo/design-system/components/ui/button';
 import {
@@ -51,9 +51,12 @@ import {
   ShareIcon,
   SquareTerminalIcon,
   Trash2Icon,
+  LogOutIcon,
 } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { Search } from './search';
 
 type GlobalSidebarProperties = {
@@ -191,6 +194,25 @@ const data = {
 
 export const GlobalSidebar = ({ children }: GlobalSidebarProperties) => {
   const sidebar = useSidebar();
+  const router = useRouter();
+  const supabase = createClient();
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) =>
+      setUser(session?.user ?? null)
+    );
+    return () => subscription.unsubscribe();
+  }, [supabase]);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.push('/');
+    router.refresh();
+  };
 
   return (
     <>
@@ -204,10 +226,12 @@ export const GlobalSidebar = ({ children }: GlobalSidebarProperties) => {
                   sidebar.open ? '' : '-mx-1'
                 )}
               >
-                <OrganizationSwitcher
-                  hidePersonal
-                  afterSelectOrganizationUrl="/"
-                />
+                {/* OrganizationSwitcher removed - implement custom team/org switching if needed */}
+                <div className="flex items-center gap-2 px-2">
+                  <span className="text-sm font-medium">
+                    {user?.user_metadata?.organization_name || 'Personal'}
+                  </span>
+                </div>
               </div>
             </SidebarMenuItem>
           </SidebarMenu>
@@ -326,16 +350,46 @@ export const GlobalSidebar = ({ children }: GlobalSidebarProperties) => {
         <SidebarFooter>
           <SidebarMenu>
             <SidebarMenuItem className="flex items-center gap-2">
-              <UserButton
-                showName
-                appearance={{
-                  elements: {
-                    rootBox: 'flex overflow-hidden w-full',
-                    userButtonBox: 'flex-row-reverse',
-                    userButtonOuterIdentifier: 'truncate pl-0',
-                  },
-                }}
-              />
+              {/* UserButton replaced with custom implementation */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="flex w-full items-center gap-2 overflow-hidden px-2"
+                  >
+                    {user?.user_metadata?.avatar_url ? (
+                      <img
+                        src={user.user_metadata.avatar_url}
+                        alt={user.email || 'User'}
+                        className="h-6 w-6 rounded-full"
+                      />
+                    ) : (
+                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-muted">
+                        <span className="text-xs">
+                          {user?.email?.charAt(0).toUpperCase() || 'U'}
+                        </span>
+                      </div>
+                    )}
+                    <span className="truncate text-sm">
+                      {user?.user_metadata?.first_name ||
+                        user?.email ||
+                        'User'}
+                    </span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem disabled>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {user?.email}
+                    </span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleSignOut}>
+                    <LogOutIcon className="mr-2 h-4 w-4" />
+                    <span>Sign out</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <div className="flex shrink-0 items-center gap-px">
                 <ModeToggle />
                 <Button

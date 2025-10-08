@@ -1,16 +1,27 @@
 'use client';
 
 import { useAnalytics } from '@repo/analytics/posthog/client';
-import { useUser } from '@repo/auth/client';
+import { createClient } from '@repo/auth/client';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export const PostHogIdentifier = () => {
-  const { user } = useUser();
+  const supabase = createClient();
+  const [user, setUser] = useState(null);
   const identified = useRef(false);
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const analytics = useAnalytics();
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) =>
+      setUser(session?.user ?? null)
+    );
+    return () => subscription.unsubscribe();
+  }, [supabase]);
 
   useEffect(() => {
     // Track pageviews
@@ -31,12 +42,12 @@ export const PostHogIdentifier = () => {
     }
 
     analytics.identify(user.id, {
-      email: user.emailAddresses.at(0)?.emailAddress,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      createdAt: user.createdAt,
-      avatar: user.imageUrl,
-      phoneNumber: user.phoneNumbers.at(0)?.phoneNumber,
+      email: user.email,
+      firstName: user.user_metadata?.first_name,
+      lastName: user.user_metadata?.last_name,
+      createdAt: user.created_at,
+      avatar: user.user_metadata?.avatar_url,
+      phoneNumber: user.phone,
     });
 
     identified.current = true;
