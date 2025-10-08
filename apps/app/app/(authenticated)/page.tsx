@@ -3,7 +3,7 @@ import { auth } from '@repo/auth/server';
 import { database } from '@repo/database';
 import type { Metadata } from 'next';
 import dynamic from 'next/dynamic';
-import { notFound } from 'next/navigation';
+import { redirect } from 'next/navigation';
 import { AvatarStack } from './components/avatar-stack';
 import { Cursors } from './components/cursors';
 import { Header } from './components/header';
@@ -24,16 +24,19 @@ export const metadata: Metadata = {
 
 const App = async () => {
   const pages = await database.page.findMany();
-  const { orgId } = await auth();
+  const { user } = await auth();
 
-  if (!orgId) {
-    notFound();
+  if (!user) {
+    redirect('/sign-in');
   }
+
+  // ถ้าต้องการใช้ organization ID จาก user metadata
+  const orgId = user.user_metadata?.organization_id;
 
   return (
     <>
       <Header pages={['Building Your Application']} page="Data Fetching">
-        {env.LIVEBLOCKS_SECRET && (
+        {env.LIVEBLOCKS_SECRET && orgId && (
           <CollaborationProvider orgId={orgId}>
             <AvatarStack />
             <Cursors />
