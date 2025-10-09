@@ -7,7 +7,7 @@ import {
 import { type NextRequest, type NextFetchEvent, NextResponse } from 'next/server';
 import { env } from './env';
 
-// Create security headers function (same pattern as original)
+// Create security headers function
 const securityHeaders = env.FLAGS_SECRET
   ? noseconeMiddleware(noseconeOptionsWithToolbar)
   : noseconeMiddleware(noseconeOptions);
@@ -24,13 +24,10 @@ export default async function middleware(
     return authResponse;
   }
 
-  // Step 2: Apply security headers
-  // Call securityHeaders() without arguments (same as Clerk pattern)
-  // Note: This works because nosecone reads request from Next.js context
-  const securityResponse = securityHeaders();
+  // Step 2: Apply security headers (AWAIT the response)
+  const securityResponse = await securityHeaders();
   
-  // Merge auth response with security headers
-  // Copy all headers from security response to auth response
+  // Step 3: Merge auth response with security headers
   const response = NextResponse.next();
   securityResponse.headers.forEach((value, key) => {
     response.headers.set(key, value);
