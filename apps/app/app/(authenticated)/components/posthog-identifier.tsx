@@ -4,27 +4,31 @@ import { useAnalytics } from '@repo/analytics/posthog/client';
 import { createClient } from '@repo/auth/client';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
+import type { User } from '@supabase/supabase-js';
 
 export const PostHogIdentifier = () => {
-  const supabase = createClient();
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<User | null>(null);
   const identified = useRef(false);
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const analytics = useAnalytics();
+  const supabase = createClient();
 
+  // Get user data
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
+    
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) =>
-      setUser(session?.user ?? null)
-    );
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
     return () => subscription.unsubscribe();
   }, [supabase]);
 
+  // Track pageviews
   useEffect(() => {
-    // Track pageviews
     if (pathname && analytics) {
       let url = window.origin + pathname;
       if (searchParams.toString()) {
@@ -36,6 +40,7 @@ export const PostHogIdentifier = () => {
     }
   }, [pathname, searchParams, analytics]);
 
+  // Identify user
   useEffect(() => {
     if (!user || identified.current) {
       return;
@@ -43,8 +48,7 @@ export const PostHogIdentifier = () => {
 
     analytics.identify(user.id, {
       email: user.email,
-      firstName: user.user_metadata?.first_name,
-      lastName: user.user_metadata?.last_name,
+      name: user.user_metadata?.name || user.user_metadata?.full_name,
       createdAt: user.created_at,
       avatar: user.user_metadata?.avatar_url,
       phoneNumber: user.phone,

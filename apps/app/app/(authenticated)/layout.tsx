@@ -4,6 +4,7 @@ import { SidebarProvider } from '@repo/design-system/components/ui/sidebar';
 import { showBetaFeature } from '@repo/feature-flags';
 import { NotificationsProvider } from '@repo/notifications/components/provider';
 import { secure } from '@repo/security';
+import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { PostHogIdentifier } from './components/posthog-identifier';
 import { GlobalSidebar } from './components/sidebar';
@@ -18,11 +19,12 @@ const AppLayout = async ({ children }: AppLayoutProperties) => {
   }
 
   const user = await currentUser();
-  const { redirectToSignIn } = await auth();
+  const { userId } = await auth();
   const betaFeature = await showBetaFeature();
 
-  if (!user) {
-    return redirectToSignIn();
+  // Redirect to sign-in if not authenticated
+  if (!user || !userId) {
+    redirect('/sign-in');
   }
 
   return (
