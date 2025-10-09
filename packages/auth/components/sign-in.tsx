@@ -2,11 +2,24 @@
 
 import { createClient } from '../client';
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { Button } from '@repo/design-system/components/ui/button';
 import { Input } from '@repo/design-system/components/ui/input';
 import { Label } from '@repo/design-system/components/ui/label';
 import Link from 'next/link';
+
+// ✅ โหลด useRouter แบบ dynamic (ป้องกัน build fail ตอน package ไม่มี next)
+let useRouter: any = () => ({
+  push: () => {},
+  refresh: () => {},
+});
+
+try {
+  // @ts-ignore
+  useRouter = require('next/navigation').useRouter;
+} catch (_) {
+  // ไม่ต้องทำอะไร ถ้าไม่มี next/navigation (ตอน build package)
+}
 
 export const SignIn = () => {
   const [email, setEmail] = useState('');
@@ -35,29 +48,12 @@ export const SignIn = () => {
     }
   };
 
-  const handleGoogleSignIn = async () => {
+  const handleOAuthSignIn = async (provider: 'google' | 'github') => {
     setLoading(true);
     setError(null);
 
     const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/api/auth/callback`,
-      },
-    });
-
-    if (error) {
-      setError(error.message);
-      setLoading(false);
-    }
-  };
-
-  const handleGitHubSignIn = async () => {
-    setLoading(true);
-    setError(null);
-
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'github',
+      provider,
       options: {
         redirectTo: `${window.location.origin}/api/auth/callback`,
       },
@@ -132,7 +128,7 @@ export const SignIn = () => {
           variant="outline"
           type="button"
           disabled={loading}
-          onClick={handleGoogleSignIn}
+          onClick={() => handleOAuthSignIn('google')}
         >
           <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
             <path
@@ -158,7 +154,7 @@ export const SignIn = () => {
           variant="outline"
           type="button"
           disabled={loading}
-          onClick={handleGitHubSignIn}
+          onClick={() => handleOAuthSignIn('github')}
         >
           <svg
             className="mr-2 h-4 w-4"
