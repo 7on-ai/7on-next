@@ -25,7 +25,8 @@ export default async function middleware(
     ? noseconeMiddleware(noseconeOptionsWithToolbar)
     : noseconeMiddleware(noseconeOptions);
 
-  return securityHeadersFn(req, authResponse);
+  // noseconeMiddleware returns a function that takes (req, event)
+  return securityHeadersFn(req, event);
 }
 
 export const config = {
