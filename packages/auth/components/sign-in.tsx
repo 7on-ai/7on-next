@@ -2,7 +2,6 @@
 
 import { createClient } from '../client';
 import { useState } from 'react';
-import dynamic from 'next/dynamic';
 import { Button } from '@repo/design-system/components/ui/button';
 import { Input } from '@repo/design-system/components/ui/input';
 import { Label } from '@repo/design-system/components/ui/label';
