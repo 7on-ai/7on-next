@@ -29,13 +29,22 @@ export const POST = async () => {
     return new Response('Unauthorized', { status: 401 });
   }
 
+  // Get user name from Supabase user metadata or email
+  const userName = 
+    user.user_metadata?.name || 
+    user.user_metadata?.full_name ||
+    user.email ||
+    'Unknown User';
+
+  // Get avatar from user metadata
+  const userAvatar = user.user_metadata?.avatar_url || undefined;
+
   return authenticate({
     userId: user.id,
     orgId,
     userInfo: {
-      name:
-        user.fullName ?? user.emailAddresses.at(0)?.emailAddress ?? undefined,
-      avatar: user.imageUrl ?? undefined,
+      name: userName,
+      avatar: userAvatar,
       color: COLORS[Math.floor(Math.random() * COLORS.length)],
     },
   });

@@ -1,6 +1,5 @@
 'use client';
 
-import { OrganizationSwitcher, UserButton } from '@repo/auth/client';
 import { ModeToggle } from '@repo/design-system/components/mode-toggle';
 import { Button } from '@repo/design-system/components/ui/button';
 import {
@@ -55,6 +54,8 @@ import {
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { Search } from './search';
+import { UserMenu } from './user-menu';
+import { OrganizationSwitcher } from './organization-switcher';
 
 type GlobalSidebarProperties = {
   readonly children: ReactNode;
@@ -204,10 +205,7 @@ export const GlobalSidebar = ({ children }: GlobalSidebarProperties) => {
                   sidebar.open ? '' : '-mx-1'
                 )}
               >
-                <OrganizationSwitcher
-                  hidePersonal
-                  afterSelectOrganizationUrl="/"
-                />
+                <OrganizationSwitcher />
               </div>
             </SidebarMenuItem>
           </SidebarMenu>
@@ -326,16 +324,7 @@ export const GlobalSidebar = ({ children }: GlobalSidebarProperties) => {
         <SidebarFooter>
           <SidebarMenu>
             <SidebarMenuItem className="flex items-center gap-2">
-              <UserButton
-                showName
-                appearance={{
-                  elements: {
-                    rootBox: 'flex overflow-hidden w-full',
-                    userButtonBox: 'flex-row-reverse',
-                    userButtonOuterIdentifier: 'truncate pl-0',
-                  },
-                }}
-              />
+              <UserMenu />
               <div className="flex shrink-0 items-center gap-px">
                 <ModeToggle />
                 <Button
