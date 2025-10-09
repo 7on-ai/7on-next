@@ -4,29 +4,39 @@ import {
   noseconeOptions,
   noseconeOptionsWithToolbar,
 } from '@repo/security/middleware';
-import { NextResponse, type NextRequest, type NextFetchEvent } from 'next/server';
+import { type NextRequest, type NextFetchEvent, NextResponse } from 'next/server';
 import { env } from './env';
 
-// เพิ่ม NextFetchEvent parameter ตามที่ Next.js 15 ต้องการ
+// Create security headers function (same pattern as original)
+const securityHeaders = env.FLAGS_SECRET
+  ? noseconeMiddleware(noseconeOptionsWithToolbar)
+  : noseconeMiddleware(noseconeOptions);
+
 export default async function middleware(
   req: NextRequest,
-  event: NextFetchEvent  // เพิ่ม parameter ที่ 2
+  event: NextFetchEvent
 ) {
-  // Step 1: Run auth middleware
+  // Step 1: Run auth check
   const authResponse = await authMiddleware(req, event);
   
-  // If auth returns redirect, use it immediately
+  // If auth fails (redirect or error), return immediately
   if (authResponse.status !== 200) {
     return authResponse;
   }
 
   // Step 2: Apply security headers
-  const securityHeadersFn = env.FLAGS_SECRET
-    ? noseconeMiddleware(noseconeOptionsWithToolbar)
-    : noseconeMiddleware(noseconeOptions);
-
-  // noseconeMiddleware returns a function that takes (req, event)
-  return securityHeadersFn(req, event);
+  // Call securityHeaders() without arguments (same as Clerk pattern)
+  // Note: This works because nosecone reads request from Next.js context
+  const securityResponse = securityHeaders();
+  
+  // Merge auth response with security headers
+  // Copy all headers from security response to auth response
+  const response = NextResponse.next();
+  securityResponse.headers.forEach((value, key) => {
+    response.headers.set(key, value);
+  });
+  
+  return response;
 }
 
 export const config = {
