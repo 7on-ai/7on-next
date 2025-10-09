@@ -51,9 +51,10 @@ export const UserMenu = () => {
   const userName = user.user_metadata?.name || user.email || 'User';
   const userEmail = user.email || '';
   const avatarUrl = user.user_metadata?.avatar_url;
+
   const initials = userName
     .split(' ')
-    .map((n) => n[0])
+    .map((n: string) => n.charAt(0))
     .join('')
     .toUpperCase()
     .slice(0, 2);
