@@ -1,23 +1,8 @@
 'use server';
 
-import {
-  type OrganizationMembership,
-  auth,
-  clerkClient,
-} from '@repo/auth/server';
+import { auth } from '@repo/auth/server';
+import { database } from '@repo/database';
 import Fuse from 'fuse.js';
-
-const getName = (user: OrganizationMembership): string | undefined => {
-  let name = user.publicUserData?.firstName;
-
-  if (name && user.publicUserData?.lastName) {
-    name = `${name} ${user.publicUserData.lastName}`;
-  } else if (!name) {
-    name = user.publicUserData?.identifier;
-  }
-
-  return name;
-};
 
 export const searchUsers = async (
   query: string
@@ -36,21 +21,27 @@ export const searchUsers = async (
       throw new Error('Not logged in');
     }
 
-    const clerk = await clerkClient();
-
-    const members = await clerk.organizations.getOrganizationMembershipList({
-      organizationId: orgId,
-      limit: 100,
+    // Get organization members from database
+    const members = await database.organizationMember.findMany({
+      where: {
+        organizationId: orgId,
+      },
+      take: 100,
     });
 
-    const users = members.data.map((user) => ({
-      id: user.id,
-      name: getName(user) ?? user.publicUserData?.identifier,
-      imageUrl: user.publicUserData?.imageUrl,
+    // Map members to searchable format
+    // Note: Since we don't have user names stored, we use userId
+    // You may want to enhance this by storing user profiles in your database
+    const users = members.map((member) => ({
+      id: member.id,
+      userId: member.userId,
+      // Placeholder name - you should store actual user names in your database
+      name: member.userId.slice(0, 8),
     }));
 
+    // Use Fuse.js for fuzzy search
     const fuse = new Fuse(users, {
-      keys: ['name'],
+      keys: ['name', 'userId'],
       minMatchCharLength: 1,
       threshold: 0.3,
     });
