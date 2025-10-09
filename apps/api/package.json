@@ -30,8 +30,7 @@
     "vitest": "^3.1.4",
     "zod": "^3.25.28",
     "@supabase/supabase-js": "latest",
-    "@supabase/ssr": "latest",
-    "@repo/database": "workspace:*"
+    "@supabase/ssr": "latest"
   },
   "devDependencies": {
     "@repo/typescript-config": "workspace:*",
