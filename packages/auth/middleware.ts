@@ -1,44 +1,45 @@
 import 'server-only';
 import { createServerClient } from '@supabase/ssr';
-import { NextResponse, type NextRequest } from 'next/server';
+import { NextResponse, type NextRequest, type NextMiddleware } from 'next/server';
 
-export const authMiddleware = async (request: NextRequest) => {
-  let supabaseResponse = NextResponse.next({
-    request,
-  });
-
+// สำหรับ Next.js 15 เราสามารถ export default middleware function
+export const authMiddleware: NextMiddleware = async (req: NextRequest) => {
+  // สร้าง Supabase client สำหรับ server-side
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
         getAll() {
-          return request.cookies.getAll();
+          return req.cookies.getAll();
         },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value, options }) =>
-            request.cookies.set(name, value)
-          );
-          supabaseResponse = NextResponse.next({
-            request,
-          });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
+            req.cookies.set(name, value)
           );
         },
       },
     }
   );
 
-  // Refreshing the auth token
-  const { data: { user } } = await supabase.auth.getUser();
+  // ดึง user จาก Supabase
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  // Redirect to sign-in if accessing protected route without authentication
-  if (!user && request.nextUrl.pathname.startsWith('/dashboard')) {
-    const url = request.nextUrl.clone();
+  // ถ้าเข้าหน้า /dashboard แต่ยังไม่ได้ login ให้ redirect ไป sign-in
+  if (!user && req.nextUrl.pathname.startsWith('/dashboard')) {
+    const url = req.nextUrl.clone();
     url.pathname = '/sign-in';
     return NextResponse.redirect(url);
   }
 
-  return supabaseResponse;
+  // ถ้า auth ผ่าน ให้ไปต่อ
+  return NextResponse.next();
+};
+
+// บังคับให้ middleware รันใน Node.js runtime
+export const config = {
+  matcher: ['/dashboard/:path*'], // รันเฉพาะ route ที่ต้อง auth
+  runtime: 'nodejs',
 };
