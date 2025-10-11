@@ -13,8 +13,119 @@ datasource db {
   relationMode = "prisma"
 }
 
-// This is a stub model.
-// Delete it and add your own Prisma models.
+// ============================================
+// USER & SUBSCRIPTION MODELS
+// ============================================
+
+model User {
+  id      String @id @default(cuid())
+  clerkId String @unique
+  email   String @unique
+
+  // Stripe Integration
+  stripeCustomerId String? @unique
+
+  // Current Subscription Tier (cached from Stripe)
+  subscriptionTier SubscriptionTier @default(FREE)
+
+  // Usage Tracking
+  apiCallsCount Int      @default(0)
+  usageResetAt  DateTime @default(now())
+
+  // Relations
+  subscriptions Subscription[]
+  usageLogs     UsageLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clerkId])
+  @@index([stripeCustomerId])
+  @@index([email])
+}
+
+model Subscription {
+  id String @id @default(cuid())
+
+  // User Relation
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Stripe Data
+  stripeSubscriptionId String @unique
+  stripePriceId        String
+  stripeProductId      String
+  stripeCustomerId     String
+
+  // Subscription Details
+  status SubscriptionStatus
+  tier   SubscriptionTier
+
+  // Billing Period
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  cancelAtPeriodEnd  Boolean   @default(false)
+  canceledAt         DateTime?
+
+  // Trial
+  trialStart DateTime?
+  trialEnd   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([stripeSubscriptionId])
+  @@index([stripeCustomerId])
+  @@index([status])
+}
+
+// Usage Tracking for Rate Limiting
+model UsageLog {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Usage Type
+  action String // e.g., "api_call", "export", "analysis"
+  count  Int    @default(1)
+
+  // Metadata
+  endpoint String?
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([userId, action])
+  @@index([createdAt])
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum SubscriptionTier {
+  FREE
+  PRO
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+  PAST_DUE
+  TRIALING
+  UNPAID
+  PAUSED
+}
+
+// ============================================
+// EXISTING MODELS (Keep as is)
+// ============================================
+
 model Page {
   id   Int    @id @default(autoincrement())
   name String
