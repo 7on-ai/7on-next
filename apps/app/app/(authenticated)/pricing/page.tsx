@@ -1,7 +1,6 @@
-import { getUserTier } from '@repo/auth';
+import { getUserTier, TIER_PRICING, TIER_FEATURES, FEATURE_DESCRIPTIONS } from '@repo/auth/server';
 import type { Metadata } from 'next';
 import { PricingCard } from './components/pricing-card';
-import { TIER_PRICING, TIER_FEATURES, FEATURE_DESCRIPTIONS } from '@repo/auth';
 
 export const metadata: Metadata = {
   title: 'Pricing - Choose Your Plan',
