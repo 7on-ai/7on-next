@@ -1,5 +1,4 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// This is your Prisma schema file
 
 generator client {
   provider        = "prisma-client-js"
@@ -58,8 +57,9 @@ model Subscription {
   stripeCustomerId     String
 
   // Subscription Details
-  status SubscriptionStatus
-  tier   SubscriptionTier
+  status          SubscriptionStatus
+  tier            SubscriptionTier
+  billingInterval BillingInterval    @default(MONTHLY)
 
   // Billing Period
   currentPeriodStart DateTime
@@ -80,18 +80,14 @@ model Subscription {
   @@index([status])
 }
 
-// Usage Tracking for Rate Limiting
 model UsageLog {
   id String @id @default(cuid())
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // Usage Type
-  action String // e.g., "api_call", "export", "analysis"
-  count  Int    @default(1)
-
-  // Metadata
+  action   String
+  count    Int     @default(1)
   endpoint String?
   metadata Json?
 
@@ -109,6 +105,12 @@ model UsageLog {
 enum SubscriptionTier {
   FREE
   PRO
+  BUSINESS
+}
+
+enum BillingInterval {
+  MONTHLY
+  YEARLY
 }
 
 enum SubscriptionStatus {
@@ -123,7 +125,7 @@ enum SubscriptionStatus {
 }
 
 // ============================================
-// EXISTING MODELS (Keep as is)
+// EXISTING MODELS
 // ============================================
 
 model Page {
