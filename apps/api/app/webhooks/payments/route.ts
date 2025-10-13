@@ -24,12 +24,38 @@ const getUserFromCustomerId = async (customerId: string) => {
   return user;
 };
 
-const getTierFromPriceId = (priceId: string): 'FREE' | 'PRO' => {
-  // Pro Plan Price ID
-  if (priceId === 'price_1Ric5JDLk0PkB2fKhSmA0GoO') {
+const getTierFromPriceId = (priceId: string): 'FREE' | 'PRO' | 'BUSINESS' => {
+  // PRO Plans
+  if (
+    priceId === 'price_1Ric5JDLk0PkB2fKhSmA0GoO' || // PRO Monthly
+    priceId === 'price_1SHbUfDLk0PkB2fKliMAf7R4' // PRO Yearly - Replace with actual
+  ) {
     return 'PRO';
   }
+  
+  // BUSINESS Plans
+  if (
+    priceId === 'price_1SHbwMDLk0PkB2fKP0kXrabL' || // BUSINESS Monthly - Replace with actual
+    priceId === 'price_1SHbxXDLk0PkB2fKCJYkEJCC' // BUSINESS Yearly - Replace with actual
+  ) {
+    return 'BUSINESS';
+  }
+  
   return 'FREE';
+};
+
+const getBillingIntervalFromPriceId = (priceId: string): 'MONTHLY' | 'YEARLY' => {
+  // Yearly price IDs
+  const yearlyPriceIds = [
+    'price_1SHbUfDLk0PkB2fKliMAf7R4',
+    'price_1SHbxXDLk0PkB2fKCJYkEJCC',
+  ];
+  
+  if (yearlyPriceIds.includes(priceId)) {
+    return 'YEARLY';
+  }
+  
+  return 'MONTHLY';
 };
 
 // ============================================
@@ -56,6 +82,7 @@ const handleCustomerSubscriptionCreated = async (
   }
 
   const tier = getTierFromPriceId(priceId);
+  const billingInterval = getBillingIntervalFromPriceId(priceId);
 
   // Find or create user in database
   let user = await database.user.findUnique({
@@ -97,6 +124,7 @@ const handleCustomerSubscriptionCreated = async (
       stripeCustomerId: customerId,
       status: subscription.status.toUpperCase() as any,
       tier,
+      billingInterval,
       currentPeriodStart: new Date(subscription.current_period_start * 1000),
       currentPeriodEnd: new Date(subscription.current_period_end * 1000),
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
@@ -124,6 +152,7 @@ const handleCustomerSubscriptionCreated = async (
         ...clerkUser.publicMetadata,
         subscription: {
           tier,
+          billingInterval,
           status: subscription.status,
           currentPeriodEnd: subscription.current_period_end,
         },
@@ -135,13 +164,18 @@ const handleCustomerSubscriptionCreated = async (
       distinctId: clerkUser.id,
       properties: {
         tier,
+        billingInterval,
         priceId,
         subscriptionId: subscription.id,
       },
     });
   }
 
-  log.info('Subscription created', { subscriptionId: subscription.id, tier });
+  log.info('Subscription created', { 
+    subscriptionId: subscription.id, 
+    tier,
+    billingInterval 
+  });
 };
 
 const handleCustomerSubscriptionUpdated = async (
@@ -154,6 +188,7 @@ const handleCustomerSubscriptionUpdated = async (
 
   const priceId = subscription.items.data[0]?.price.id;
   const tier = getTierFromPriceId(priceId || '');
+  const billingInterval = getBillingIntervalFromPriceId(priceId || '');
 
   // Update subscription in database
   const existingSubscription = await database.subscription.findUnique({
@@ -174,6 +209,7 @@ const handleCustomerSubscriptionUpdated = async (
     data: {
       status: subscription.status.toUpperCase() as any,
       tier,
+      billingInterval,
       currentPeriodStart: new Date(subscription.current_period_start * 1000),
       currentPeriodEnd: new Date(subscription.current_period_end * 1000),
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
@@ -198,6 +234,7 @@ const handleCustomerSubscriptionUpdated = async (
         ...clerkUser.publicMetadata,
         subscription: {
           tier,
+          billingInterval,
           status: subscription.status,
           currentPeriodEnd: subscription.current_period_end,
         },
@@ -209,12 +246,17 @@ const handleCustomerSubscriptionUpdated = async (
       distinctId: clerkUser.id,
       properties: {
         tier,
+        billingInterval,
         status: subscription.status,
       },
     });
   }
 
-  log.info('Subscription updated', { subscriptionId: subscription.id, tier });
+  log.info('Subscription updated', { 
+    subscriptionId: subscription.id, 
+    tier,
+    billingInterval 
+  });
 };
 
 const handleCustomerSubscriptionDeleted = async (
@@ -255,6 +297,7 @@ const handleCustomerSubscriptionDeleted = async (
         ...clerkUser.publicMetadata,
         subscription: {
           tier: 'FREE',
+          billingInterval: null,
           status: 'canceled',
           currentPeriodEnd: null,
         },

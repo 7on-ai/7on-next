@@ -2,52 +2,57 @@
 
 import { Button } from '@repo/design-system/components/ui/button';
 import { useState } from 'react';
-import { Loader2Icon, SparklesIcon } from 'lucide-react';
+import { Loader2Icon } from 'lucide-react';
+import { cn } from '@repo/design-system/lib/utils';
 
 interface SubscribeButtonProps {
   priceId: string;
   isCurrentPlan: boolean;
+  className?: string;
+  children: React.ReactNode;
 }
 
-export function SubscribeButton({ priceId, isCurrentPlan }: SubscribeButtonProps) {
-  const [isLoading, setIsLoading] = useState(false);
+export function SubscribeButton({
+  priceId,
+  isCurrentPlan,
+  className,
+  children,
+}: SubscribeButtonProps) {
+  const [loading, setLoading] = useState(false);
 
   const handleSubscribe = async () => {
-    setIsLoading(true);
-    
     try {
-      // Call API to create Stripe Checkout Session
+      setLoading(true);
+
       const response = await fetch('/api/create-checkout', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          priceId,
-        }),
+        body: JSON.stringify({ priceId }),
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to create checkout session');
-      }
+      const data = await response.json();
 
-      const { url } = await response.json();
-
-      // Redirect to Stripe Checkout
-      if (url) {
-        window.location.href = url;
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        throw new Error('No checkout URL returned');
       }
     } catch (error) {
-      console.error('Error creating checkout session:', error);
-      alert('Failed to start checkout. Please try again.');
-    } finally {
-      setIsLoading(false);
+      console.error('Error creating checkout:', error);
+      setLoading(false);
+      alert('Failed to create checkout session. Please try again.');
     }
   };
 
   if (isCurrentPlan) {
     return (
-      <Button variant="outline" className="w-full" disabled>
+      <Button
+        variant="outline"
+        className={cn('w-full', className)}
+        disabled
+      >
         Current Plan
       </Button>
     );
@@ -56,23 +61,17 @@ export function SubscribeButton({ priceId, isCurrentPlan }: SubscribeButtonProps
   return (
     <Button
       onClick={handleSubscribe}
-      disabled={isLoading}
-      className="group relative w-full overflow-hidden bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700"
+      disabled={loading}
+      className={cn('w-full text-white', className)}
     >
-      {isLoading ? (
+      {loading ? (
         <>
           <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />
-          Processing...
+          Loading...
         </>
       ) : (
-        <>
-          <SparklesIcon className="mr-2 h-4 w-4" />
-          Upgrade to Pro
-        </>
+        children
       )}
-      
-      {/* Shine effect */}
-      <div className="absolute inset-0 translate-x-[-100%] bg-gradient-to-r from-transparent via-white/20 to-transparent transition-transform duration-1000 group-hover:translate-x-[100%]" />
     </Button>
   );
 }

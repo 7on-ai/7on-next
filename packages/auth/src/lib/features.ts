@@ -1,6 +1,6 @@
 /**
  * Feature definitions for subscription tiers
- * Based on your plans: FREE and PRO
+ * Plans: FREE, PRO, BUSINESS (with monthly/yearly options)
  */
 
 // ============================================
@@ -20,17 +20,23 @@ export type Feature =
   | 'priority_support'
   | 'advanced_analytics'
   | 'webhook_integration'
-  | 'custom_branding';
+  
+  // Business Features
+  | 'custom_branding'
+  | 'sso_integration'
+  | 'dedicated_support'
+  | 'custom_integrations'
+  | 'white_label'
+  | 'api_access'
+  | 'advanced_security';
 
-export type SubscriptionTier = 'FREE' | 'PRO';
+export type SubscriptionTier = 'FREE' | 'PRO' | 'BUSINESS';
+export type BillingInterval = 'month' | 'year';
 
 // ============================================
 // FEATURE MAPPING
 // ============================================
 
-/**
- * Define which features are available for each tier
- */
 export const TIER_FEATURES: Record<SubscriptionTier, Feature[]> = {
   FREE: [
     'basic_dashboard',
@@ -38,11 +44,8 @@ export const TIER_FEATURES: Record<SubscriptionTier, Feature[]> = {
   ],
   
   PRO: [
-    // All FREE features
     'basic_dashboard',
     'basic_connection',
-    
-    // Additional PRO features
     'full_service_connection',
     'advanced_dashboard',
     'unlimited_api_calls',
@@ -50,7 +53,28 @@ export const TIER_FEATURES: Record<SubscriptionTier, Feature[]> = {
     'priority_support',
     'advanced_analytics',
     'webhook_integration',
+  ],
+  
+  BUSINESS: [
+    // All PRO features
+    'basic_dashboard',
+    'basic_connection',
+    'full_service_connection',
+    'advanced_dashboard',
+    'unlimited_api_calls',
+    'export_data',
+    'priority_support',
+    'advanced_analytics',
+    'webhook_integration',
+    
+    // Plus BUSINESS features
     'custom_branding',
+    'sso_integration',
+    'dedicated_support',
+    'custom_integrations',
+    'white_label',
+    'api_access',
+    'advanced_security',
   ],
 };
 
@@ -58,32 +82,36 @@ export const TIER_FEATURES: Record<SubscriptionTier, Feature[]> = {
 // USAGE LIMITS
 // ============================================
 
-/**
- * Define usage limits for each tier
- */
 export const TIER_LIMITS = {
   FREE: {
     apiCallsPerMonth: 100,
     connectionsPerMonth: 1,
     dataRetentionDays: 30,
     maxWebhooks: 0,
+    maxTeamMembers: 1,
   },
   
   PRO: {
     apiCallsPerMonth: -1, // unlimited
-    connectionsPerMonth: -1, // unlimited
+    connectionsPerMonth: -1,
     dataRetentionDays: 365,
     maxWebhooks: 10,
+    maxTeamMembers: 5,
+  },
+  
+  BUSINESS: {
+    apiCallsPerMonth: -1,
+    connectionsPerMonth: -1,
+    dataRetentionDays: -1, // unlimited
+    maxWebhooks: -1,
+    maxTeamMembers: -1, // unlimited
   },
 } as const;
 
 // ============================================
-// FEATURE METADATA
+// FEATURE DESCRIPTIONS
 // ============================================
 
-/**
- * Human-readable feature descriptions
- */
 export const FEATURE_DESCRIPTIONS: Record<Feature, string> = {
   basic_dashboard: 'Access to basic dashboard',
   basic_connection: 'Basic service connection',
@@ -95,38 +123,65 @@ export const FEATURE_DESCRIPTIONS: Record<Feature, string> = {
   advanced_analytics: 'Advanced analytics and insights',
   webhook_integration: 'Webhook integrations',
   custom_branding: 'Custom branding and white-label',
+  sso_integration: 'Single Sign-On (SSO)',
+  dedicated_support: 'Dedicated account manager',
+  custom_integrations: 'Custom integrations',
+  white_label: 'Full white-label solution',
+  api_access: 'Full API access',
+  advanced_security: 'Advanced security features',
 };
 
 // ============================================
-// PRICING
+// STRIPE PRICE IDS
 // ============================================
 
-/**
- * Stripe Price IDs for each tier
- */
-export const TIER_PRICE_IDS: Record<SubscriptionTier, string | null> = {
+export const TIER_PRICE_IDS = {
   FREE: null,
-  PRO: 'price_1Ric5JDLk0PkB2fKhSmA0GoO',
-};
+  
+  PRO: {
+    monthly: 'price_1Ric5JDLk0PkB2fKhSmA0GoO',
+    yearly: 'price_1SHbUfDLk0PkB2fKliMAf7R4', // Replace with your Stripe price ID
+  },
+  
+  BUSINESS: {
+    monthly: 'price_1SHbwMDLk0PkB2fKP0kXrabL', // Replace with your Stripe price ID
+    yearly: 'price_1SHbxXDLk0PkB2fKCJYkEJCC', // Replace with your Stripe price ID
+  },
+} as const;
 
-/**
- * Pricing information for display
- */
+// ============================================
+// PRICING INFORMATION
+// ============================================
+
 export const TIER_PRICING = {
   FREE: {
     name: 'Free',
-    price: 0,
-    interval: 'month' as const,
-    description: 'Basic service connection',
-    priceId: null,
+    monthlyPrice: 0,
+    yearlyPrice: 0,
+    description: 'For individuals or teams looking to organize anything.',
+    features: TIER_FEATURES.FREE,
+    priceIds: null,
+    popular: false,
   },
   
   PRO: {
-    name: 'Pro',
-    price: 29,
-    interval: 'month' as const,
-    description: 'Full service connection',
-    priceId: 'price_1Ric5JDLk0PkB2fKhSmA0GoO',
+    name: 'Standard',
+    monthlyPrice: 6,
+    yearlyPrice: 60, // $5/month billed yearly
+    description: 'For teams that need to manage more work.',
+    features: TIER_FEATURES.PRO,
+    priceIds: TIER_PRICE_IDS.PRO,
+    popular: true,
+  },
+  
+  BUSINESS: {
+    name: 'Premium',
+    monthlyPrice: 12,
+    yearlyPrice: 120, // $10/month billed yearly
+    description: 'Best for teams that need to track multiple projects.',
+    features: TIER_FEATURES.BUSINESS,
+    priceIds: TIER_PRICE_IDS.BUSINESS,
+    popular: false,
   },
 } as const;
 
@@ -134,40 +189,42 @@ export const TIER_PRICING = {
 // HELPER FUNCTIONS
 // ============================================
 
-/**
- * Check if a tier has a specific feature
- */
 export function tierHasFeature(tier: SubscriptionTier, feature: Feature): boolean {
   return TIER_FEATURES[tier].includes(feature);
 }
 
-/**
- * Get all features for a tier
- */
 export function getTierFeatures(tier: SubscriptionTier): Feature[] {
   return TIER_FEATURES[tier];
 }
 
-/**
- * Get usage limits for a tier
- */
 export function getTierLimits(tier: SubscriptionTier) {
   return TIER_LIMITS[tier];
 }
 
-/**
- * Get price ID for a tier
- */
-export function getTierPriceId(tier: SubscriptionTier): string | null {
-  return TIER_PRICE_IDS[tier];
+export function getTierPriceId(tier: SubscriptionTier, interval: BillingInterval): string | null {
+  if (tier === 'FREE') return null;
+  return TIER_PRICE_IDS[tier][interval];
 }
 
-/**
- * Get tier from price ID
- */
 export function getTierFromPriceId(priceId: string): SubscriptionTier {
-  if (priceId === TIER_PRICE_IDS.PRO) {
+  // PRO
+  if (priceId === TIER_PRICE_IDS.PRO.monthly || priceId === TIER_PRICE_IDS.PRO.yearly) {
     return 'PRO';
   }
+  
+  // BUSINESS
+  if (priceId === TIER_PRICE_IDS.BUSINESS.monthly || priceId === TIER_PRICE_IDS.BUSINESS.yearly) {
+    return 'BUSINESS';
+  }
+  
   return 'FREE';
+}
+
+export function getBillingIntervalFromPriceId(priceId: string): BillingInterval {
+  // Check PRO
+  if (priceId === TIER_PRICE_IDS.PRO.yearly || priceId === TIER_PRICE_IDS.BUSINESS.yearly) {
+    return 'year';
+  }
+  
+  return 'month';
 }
