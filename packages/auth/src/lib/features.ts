@@ -31,7 +31,7 @@ export type Feature =
   | 'advanced_security';
 
 export type SubscriptionTier = 'FREE' | 'PRO' | 'BUSINESS';
-export type BillingInterval = 'month' | 'year';
+export type BillingInterval = 'monthly' | 'yearly';
 
 // ============================================
 // FEATURE MAPPING
