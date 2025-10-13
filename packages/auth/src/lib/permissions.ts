@@ -157,6 +157,7 @@ export async function requireTier(requiredTier: SubscriptionTier): Promise<void>
   const tierOrder: Record<SubscriptionTier, number> = {
     FREE: 0,
     PRO: 1,
+    BUSINESS: 2,
   };
   
   if (tierOrder[currentTier] < tierOrder[requiredTier]) {
