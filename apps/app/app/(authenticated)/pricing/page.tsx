@@ -16,14 +16,6 @@ export default async function PricingPage() {
       {/* Content */}
       <div className="relative z-10 mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="text-center">
-          <h1 className="text-4xl font-bold text-gray-900 sm:text-5xl">
-            Pricing
-          </h1>
-          <p className="mt-4 text-lg text-gray-600">
-            Choose the plan that's right for you
-          </p>
-        </div>
 
         {/* Billing Toggle */}
         <BillingToggle />
@@ -51,8 +43,8 @@ export default async function PricingPage() {
           <PricingCard
             tier="PRO"
             name="Standard"
-            monthlyPrice={6}
-            yearlyPrice={60}
+            monthlyPrice={29}
+            yearlyPrice={290}
             description="For teams that need to manage more work."
             features={[
               'Full service connection',
@@ -66,7 +58,7 @@ export default async function PricingPage() {
             buttonColor="bg-cyan-500 hover:bg-cyan-600"
             priceIds={{
               monthly: 'price_1Ric5JDLk0PkB2fKhSmA0GoO',
-              yearly: 'price_xxxxx_pro_yearly',
+              yearly: 'price_1SHbUfDLk0PkB2fKliMAf7R4',
             }}
             isCurrentPlan={currentTier === 'PRO'}
             isPopular
@@ -76,8 +68,8 @@ export default async function PricingPage() {
           <PricingCard
             tier="BUSINESS"
             name="Premium"
-            monthlyPrice={12}
-            yearlyPrice={120}
+            monthlyPrice={79}
+            yearlyPrice={790}
             description="Best for teams that need to track multiple projects."
             features={[
               'Everything in Standard',
@@ -91,8 +83,8 @@ export default async function PricingPage() {
             buttonVariant="default"
             buttonColor="bg-orange-500 hover:bg-orange-600"
             priceIds={{
-              monthly: 'price_xxxxx_business_monthly',
-              yearly: 'price_xxxxx_business_yearly',
+              monthly: 'price_1SHbwMDLk0PkB2fKP0kXrabL',
+              yearly: 'price_1SHbxXDLk0PkB2fKCJYkEJCC',
             }}
             isCurrentPlan={currentTier === 'BUSINESS'}
           />

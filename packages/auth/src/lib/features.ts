@@ -166,8 +166,8 @@ export const TIER_PRICING = {
   
   PRO: {
     name: 'Standard',
-    monthlyPrice: 6,
-    yearlyPrice: 60, // $5/month billed yearly
+    monthlyPrice: 29,
+    yearlyPrice: 290, // $24/month billed yearly
     description: 'For teams that need to manage more work.',
     features: TIER_FEATURES.PRO,
     priceIds: TIER_PRICE_IDS.PRO,
@@ -176,8 +176,8 @@ export const TIER_PRICING = {
   
   BUSINESS: {
     name: 'Premium',
-    monthlyPrice: 12,
-    yearlyPrice: 120, // $10/month billed yearly
+    monthlyPrice: 79,
+    yearlyPrice: 790, // $65/month billed yearly
     description: 'Best for teams that need to track multiple projects.',
     features: TIER_FEATURES.BUSINESS,
     priceIds: TIER_PRICE_IDS.BUSINESS,
