@@ -223,8 +223,8 @@ export function getTierFromPriceId(priceId: string): SubscriptionTier {
 export function getBillingIntervalFromPriceId(priceId: string): BillingInterval {
   // Check PRO
   if (priceId === TIER_PRICE_IDS.PRO.yearly || priceId === TIER_PRICE_IDS.BUSINESS.yearly) {
-    return 'year';
+    return 'yearly';
   }
   
-  return 'month';
+  return 'monthly';
 }
