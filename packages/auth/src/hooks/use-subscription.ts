@@ -1,7 +1,7 @@
 'use client';
 
-import { useUser } from '../client';
-import { type Feature, type SubscriptionTier, TIER_FEATURES, TIER_LIMITS } from '../lib/features';
+import { useUser } from '@repo/auth/client';
+import { type Feature, type SubscriptionTier, TIER_FEATURES, TIER_LIMITS } from '@repo/auth/lib/features';
 
 // ============================================
 // SUBSCRIPTION HOOK

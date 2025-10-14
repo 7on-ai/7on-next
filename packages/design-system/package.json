@@ -4,7 +4,8 @@
   "private": true,
   "exports": {
     "./components/ui/*": "./components/ui/*.tsx",
-    "./lib/*": "./lib/*.ts"
+    "./lib/*": "./lib/*.ts",
+    "./postcss.config.mjs": "./postcss.config.mjs"
   },
   "scripts": {
     "clean": "git clean -xdf .cache .turbo dist node_modules",
