@@ -5,7 +5,9 @@
   "exports": {
     "./components/ui/*": "./components/ui/*",
     "./lib/*": "./lib/*",
-    "./postcss.config.mjs": "./postcss.config.mjs"
+    "./postcss.config.mjs": "./postcss.config.mjs",
+    "./*": "./*",
+    "./styles/*": "./styles/*"
   },
   "scripts": {
     "clean": "git clean -xdf .cache .turbo dist node_modules",

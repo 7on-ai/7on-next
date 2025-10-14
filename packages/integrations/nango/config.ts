@@ -1,4 +1,4 @@
-import type { SubscriptionTier } from '@repo/auth';
+import type { SubscriptionTier } from '@repo/auth/client';
 
 /**
  * Nango Integration Configuration
