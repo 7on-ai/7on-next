@@ -233,7 +233,7 @@ export const GlobalSidebar = ({ children }: GlobalSidebarProperties) => {
                     </div>
                     <span className="text-xs font-medium">{tier} Plan</span>
                   </div>
-                  {isFree() && (
+                  {isFree && (
                     <Button size="sm" variant="ghost" className="h-6 px-2" asChild>
                       <Link href="/pricing">
                         <ArrowRightIcon className="h-3 w-3" />
@@ -293,7 +293,7 @@ export const GlobalSidebar = ({ children }: GlobalSidebarProperties) => {
               ))}
 
               {/* Upgrade Button for FREE users */}
-              {isFree() && (
+              {isFree && (
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild className="bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:from-cyan-600 hover:to-blue-700">
                     <Link href="/pricing">

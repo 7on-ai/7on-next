@@ -27,3 +27,13 @@ export const PostHogProvider = (
 };
 
 export { usePostHog as useAnalytics } from 'posthog-js/react';
+
+// Initialize PostHog client
+if (typeof window !== 'undefined' && !posthog.isLoaded()) {
+  posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY || '', {
+    api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://app.posthog.com',
+  });
+}
+
+export const analytics = posthog;
+export default posthog;
