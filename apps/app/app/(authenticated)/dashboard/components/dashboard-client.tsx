@@ -7,7 +7,7 @@ import { RecentActivity } from './recent-activity';
 import { Button } from '@repo/design-system/components/ui/button';
 import { SparklesIcon } from 'lucide-react';
 import Link from 'next/link';
-import type { SubscriptionTier } from '@repo/auth/client;
+import type { SubscriptionTier } from '@repo/auth/client';
 
 interface DashboardClientProps {
   initialTier: SubscriptionTier;
