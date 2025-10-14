@@ -3,8 +3,8 @@
   "version": "0.0.0",
   "private": true,
   "exports": {
-    "./components/ui/*": "./components/ui/*.tsx",
-    "./lib/*": "./lib/*.ts",
+    "./components/ui/*": "./components/ui/*",
+    "./lib/*": "./lib/*",
     "./postcss.config.mjs": "./postcss.config.mjs"
   },
   "scripts": {
