@@ -1,0 +1,30 @@
+{
+  "name": "@repo/integrations",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./nango/config": "./nango/config.ts",
+    "./nango/hooks/use-nango": "./nango/hooks/use-nango.ts",
+    "./nango/hooks/use-connections": "./nango/hooks/use-connections.ts",
+    "./components/connection-card": "./components/connection-card.tsx",
+    "./components/integration-card": "./components/integration-card.tsx"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nangohq/frontend": "^0.42.22",
+    "@repo/analytics": "workspace:*",
+    "@repo/auth": "workspace:*",
+    "@repo/design-system": "workspace:*",
+    "lucide-react": "^0.263.1",
+    "react": "^18.3.1"
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "workspace:*",
+    "@types/react": "^18.3.1",
+    "typescript": "^5.6.3"
+  }
+}

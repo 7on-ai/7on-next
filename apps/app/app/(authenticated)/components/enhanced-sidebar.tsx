@@ -1,8 +1,10 @@
 'use client';
 
 import { OrganizationSwitcher, UserButton } from '@repo/auth/client';
+import { useSubscription } from '@repo/auth/hooks/use-subscription';
 import { ModeToggle } from '@repo/design-system/components/mode-toggle';
 import { Button } from '@repo/design-system/components/ui/button';
+import { ProBadge } from '@repo/design-system/components/ui/pro-badge';
 import {
   Collapsible,
   CollapsibleContent,
@@ -37,21 +39,24 @@ import { cn } from '@repo/design-system/lib/utils';
 import { NotificationsTrigger } from '@repo/notifications/components/trigger';
 import {
   AnchorIcon,
+  ArrowRightIcon,
   BookOpenIcon,
   BotIcon,
   ChevronRightIcon,
   FolderIcon,
   FrameIcon,
+  HomeIcon,
   LifeBuoyIcon,
   MapIcon,
   MoreHorizontalIcon,
   PieChartIcon,
+  PlugIcon,
   SendIcon,
   Settings2Icon,
   ShareIcon,
+  SparklesIcon,
   SquareTerminalIcon,
   Trash2Icon,
-  CreditCardIcon,
 } from 'lucide-react';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
@@ -62,17 +67,22 @@ type GlobalSidebarProperties = {
 };
 
 const data = {
-  user: {
-    name: 'shadcn',
-    email: 'm@example.com',
-    avatar: '/avatars/shadcn.jpg',
-  },
   navMain: [
+    {
+      title: 'Dashboard',
+      url: '/dashboard',
+      icon: HomeIcon,
+      isActive: true,
+    },
+    {
+      title: 'Integrations',
+      url: '/dashboard#integrations',
+      icon: PlugIcon,
+    },
     {
       title: 'Playground',
       url: '#',
       icon: SquareTerminalIcon,
-      isActive: true,
       items: [
         {
           title: 'History',
@@ -144,8 +154,8 @@ const data = {
           url: '#',
         },
         {
-          title: 'Plans',
-          url: '/pricing',
+          title: 'Billing',
+          url: '#',
         },
         {
           title: 'Limits',
@@ -192,6 +202,7 @@ const data = {
 
 export const GlobalSidebar = ({ children }: GlobalSidebarProperties) => {
   const sidebar = useSidebar();
+  const { tier, isFree } = useSubscription();
 
   return (
     <>
@@ -211,9 +222,32 @@ export const GlobalSidebar = ({ children }: GlobalSidebarProperties) => {
                 />
               </div>
             </SidebarMenuItem>
+
+            {/* Current Plan Indicator */}
+            {sidebar.open && (
+              <SidebarMenuItem className="mt-2">
+                <div className="flex items-center justify-between rounded-lg border bg-muted/50 p-2">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-6 w-6 items-center justify-center rounded bg-primary/10">
+                      <SparklesIcon className="h-3 w-3 text-primary" />
+                    </div>
+                    <span className="text-xs font-medium">{tier} Plan</span>
+                  </div>
+                  {isFree() && (
+                    <Button size="sm" variant="ghost" className="h-6 px-2" asChild>
+                      <Link href="/pricing">
+                        <ArrowRightIcon className="h-3 w-3" />
+                      </Link>
+                    </Button>
+                  )}
+                </div>
+              </SidebarMenuItem>
+            )}
           </SidebarMenu>
         </SidebarHeader>
+
         <Search />
+
         <SidebarContent>
           <SidebarGroup>
             <SidebarGroupLabel>Platform</SidebarGroupLabel>
@@ -257,8 +291,21 @@ export const GlobalSidebar = ({ children }: GlobalSidebarProperties) => {
                   </SidebarMenuItem>
                 </Collapsible>
               ))}
+
+              {/* Upgrade Button for FREE users */}
+              {isFree() && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild className="bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:from-cyan-600 hover:to-blue-700">
+                    <Link href="/pricing">
+                      <SparklesIcon />
+                      <span>Upgrade to Pro</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
             </SidebarMenu>
           </SidebarGroup>
+
           <SidebarGroup className="group-data-[collapsible=icon]:hidden">
             <SidebarGroupLabel>Projects</SidebarGroupLabel>
             <SidebarMenu>
@@ -307,6 +354,7 @@ export const GlobalSidebar = ({ children }: GlobalSidebarProperties) => {
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroup>
+
           <SidebarGroup className="mt-auto">
             <SidebarGroupContent>
               <SidebarMenu>
@@ -324,6 +372,7 @@ export const GlobalSidebar = ({ children }: GlobalSidebarProperties) => {
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
+
         <SidebarFooter>
           <SidebarMenu>
             <SidebarMenuItem className="flex items-center gap-2">

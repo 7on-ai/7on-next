@@ -1,5 +1,3 @@
-// This is your Prisma schema file
-
 generator client {
   provider        = "prisma-client-js"
   previewFeatures = ["driverAdapters"]
@@ -12,28 +10,21 @@ datasource db {
   relationMode = "prisma"
 }
 
-// ============================================
-// USER & SUBSCRIPTION MODELS
-// ============================================
-
 model User {
   id      String @id @default(cuid())
   clerkId String @unique
   email   String @unique
 
-  // Stripe Integration
-  stripeCustomerId String? @unique
-
-  // Current Subscription Tier (cached from Stripe)
+  stripeCustomerId String?          @unique
   subscriptionTier SubscriptionTier @default(FREE)
+  apiCallsCount    Int              @default(0)
+  usageResetAt     DateTime         @default(now())
 
-  // Usage Tracking
-  apiCallsCount Int      @default(0)
-  usageResetAt  DateTime @default(now())
-
-  // Relations
-  subscriptions Subscription[]
-  usageLogs     UsageLog[]
+  subscriptions    Subscription[]
+  usageLogs        UsageLog[]
+  nangoConnections NangoConnection[]
+  apiUsage         ApiUsage[]
+  usageSummaries   UsageSummary[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -46,28 +37,23 @@ model User {
 model Subscription {
   id String @id @default(cuid())
 
-  // User Relation
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // Stripe Data
   stripeSubscriptionId String @unique
   stripePriceId        String
   stripeProductId      String
   stripeCustomerId     String
 
-  // Subscription Details
   status          SubscriptionStatus
   tier            SubscriptionTier
   billingInterval BillingInterval    @default(MONTHLY)
 
-  // Billing Period
   currentPeriodStart DateTime
   currentPeriodEnd   DateTime
   cancelAtPeriodEnd  Boolean   @default(false)
   canceledAt         DateTime?
 
-  // Trial
   trialStart DateTime?
   trialEnd   DateTime?
 
@@ -98,9 +84,82 @@ model UsageLog {
   @@index([createdAt])
 }
 
-// ============================================
-// ENUMS
-// ============================================
+model NangoConnection {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  connectionId      String @unique
+  providerConfigKey String
+  provider          String
+
+  scopes   String[]
+  metadata Json?
+
+  status       ConnectionStatus @default(ACTIVE)
+  errorMessage String?
+
+  n8nCredentialId   String?
+  n8nCredentialName String?
+  n8nSyncedAt       DateTime?
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  lastSyncedAt DateTime?
+  expiresAt    DateTime?
+
+  @@index([userId])
+  @@index([connectionId])
+  @@index([providerConfigKey])
+  @@index([status])
+  @@index([userId, status])
+}
+
+model ApiUsage {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  endpoint     String
+  method       String
+  statusCode   Int
+  responseTime Int
+
+  userAgent    String?
+  ipAddress    String?
+  errorMessage String?
+  metadata     Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([userId, createdAt])
+  @@index([userId, endpoint])
+  @@index([createdAt])
+}
+
+model UsageSummary {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  year  Int
+  month Int
+
+  apiCalls    Int @default(0)
+  connections Int @default(0)
+  failedCalls Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, year, month])
+  @@index([userId])
+  @@index([year, month])
+}
 
 enum SubscriptionTier {
   FREE
@@ -124,9 +183,14 @@ enum SubscriptionStatus {
   PAUSED
 }
 
-// ============================================
-// EXISTING MODELS
-// ============================================
+enum ConnectionStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
+  ERROR
+  PENDING
+  DISCONNECTED
+}
 
 model Page {
   id   Int    @id @default(autoincrement())

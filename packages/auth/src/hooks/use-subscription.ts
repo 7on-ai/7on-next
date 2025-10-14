@@ -12,15 +12,18 @@ export interface UseSubscriptionReturn {
   tier: SubscriptionTier;
   status: string | null;
   currentPeriodEnd: number | null;
+  billingInterval: string | null;
   
   // Feature checks
   hasFeature: (feature: Feature) => boolean;
   hasFeatures: (features: Feature[]) => boolean;
   hasAnyFeature: (features: Feature[]) => boolean;
   
-  // Tier checks
+  // Tier checks (เก็บทั้งแบบเดิมและใหม่เพื่อ backward compatibility)
   isPro: boolean;
   isFree: boolean;
+  isTier: (checkTier: SubscriptionTier) => boolean;
+  isBusiness: boolean;
   
   // Usage limits
   limits: {
@@ -59,6 +62,7 @@ export function useSubscription(): UseSubscriptionReturn {
       tier?: string;
       status?: string;
       currentPeriodEnd?: number;
+      billingInterval?: string;
     };
   } | undefined;
   
@@ -66,6 +70,7 @@ export function useSubscription(): UseSubscriptionReturn {
   const tier = (subscription?.tier as SubscriptionTier) || 'FREE';
   const status = subscription?.status || null;
   const currentPeriodEnd = subscription?.currentPeriodEnd || null;
+  const billingInterval = subscription?.billingInterval || null;
   
   // Get features for current tier
   const tierFeatures = TIER_FEATURES[tier];
@@ -86,19 +91,28 @@ export function useSubscription(): UseSubscriptionReturn {
     return features.some(feature => tierFeatures.includes(feature));
   };
   
-  // Tier checks
-  const isPro = tier === 'PRO';
+  // Tier check function (ใหม่)
+  const isTier = (checkTier: SubscriptionTier): boolean => {
+    return tier === checkTier;
+  };
+  
+  // Tier checks (เก็บแบบเดิมเป็น boolean properties)
+  const isPro = tier === 'PRO' || tier === 'BUSINESS';
   const isFree = tier === 'FREE';
+  const isBusiness = tier === 'BUSINESS';
   
   return {
     tier,
     status,
     currentPeriodEnd,
+    billingInterval,
     hasFeature,
     hasFeatures,
     hasAnyFeature,
     isPro,
     isFree,
+    isTier,
+    isBusiness,
     limits,
     isLoading: !isLoaded,
   };
