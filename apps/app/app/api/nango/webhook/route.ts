@@ -2,6 +2,7 @@ import { database } from '@repo/database';
 import { log } from '@repo/observability/log';
 import { NextResponse } from 'next/server';
 import { analytics } from '@repo/analytics/posthog/server';
+import { Prisma } from '@repo/database';
 
 /**
  * Nango Webhook Handler
@@ -59,7 +60,7 @@ export async function POST(request: Request) {
             provider: integrationName,
             status: 'ACTIVE',
             scopes: [],
-            metadata: payload.metadata || {},
+            metadata: (payload.metadata || {}) as Prisma.JsonObject,
           },
         });
 
