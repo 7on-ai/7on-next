@@ -19,7 +19,7 @@ export function DashboardClient({ initialTier }: DashboardClientProps) {
   return (
     <div className="space-y-6">
       {/* Upgrade Banner */}
-      {isFree() && (
+      {isFree && (
         <div className="rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-cyan-50 p-4 dark:border-blue-800 dark:from-blue-950 dark:to-cyan-950">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
