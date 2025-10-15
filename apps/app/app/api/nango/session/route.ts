@@ -4,8 +4,6 @@ import { NextResponse } from 'next/server';
 
 interface SessionTokenRequest {
   providerConfigKey: string;
-  connectionId?: string;
-  params?: Record<string, string>;
 }
 
 interface SessionTokenResponse {
@@ -23,13 +21,11 @@ export async function POST(request: Request) {
     }
 
     const body = (await request.json()) as SessionTokenRequest;
-    const { providerConfigKey, connectionId, params } = body;
+    const { providerConfigKey } = body;
 
     log.info('📥 Session request received', { 
       providerConfigKey, 
-      connectionId, 
       userId,
-      hasParams: !!params 
     });
 
     if (!providerConfigKey) {
@@ -49,21 +45,22 @@ export async function POST(request: Request) {
       );
     }
 
-    // ✅ Correct request body structure
+    // ✅ CORRECT REQUEST BODY according to Nango docs
     const requestBody = {
       end_user: {
-        id: userId,  // Use actual userId, not connectionId
-        // You can add more fields:
+        id: userId,
+        // Optional fields you can add:
         // email: userEmail,
         // display_name: userName,
+        // tags: { organizationId: orgId }
       },
-      allowed_integrations: [providerConfigKey],  // ✅ Array of strings, not objects
+      allowed_integrations: [providerConfigKey],  // Array of integration IDs
     };
 
     log.info('🔄 Calling Nango API', { requestBody });
 
     const nangoResponse = await fetch(
-      'https://api.nango.dev/connect/sessions',  // ✅ Correct URL
+      'https://api.nango.dev/connect/sessions',
       {
         method: 'POST',
         headers: {
@@ -77,7 +74,7 @@ export async function POST(request: Request) {
     const responseText = await nangoResponse.text();
     log.info('📡 Nango response', { 
       status: nangoResponse.status,
-      body: responseText 
+      bodyLength: responseText.length
     });
 
     if (!nangoResponse.ok) {

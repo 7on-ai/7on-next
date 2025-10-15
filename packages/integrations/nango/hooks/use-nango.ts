@@ -6,11 +6,6 @@ import { toast } from '@repo/design-system/components/ui/use-toast';
 import { analytics } from '@repo/analytics/posthog/client';
 import type { IntegrationKey } from '../config';
 
-/**
- * Nango Hook
- * Handles OAuth connection flow using Nango Connect UI with Session Token
- */
-
 interface NangoAuthOptions {
   providerConfigKey: IntegrationKey;
   connectionId?: string;
@@ -43,7 +38,6 @@ export function useNango() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           providerConfigKey,
-          connectionId: user.id,
         }),
       });
 
@@ -54,10 +48,7 @@ export function useNango() {
       }
 
       const data: NangoSessionResponse = await response.json();
-      console.log('✅ Session token received:', {
-        token: data.token.substring(0, 30) + '...',
-        expiresAt: data.expiresAt
-      });
+      console.log('✅ Session token received');
       
       return data.token;
     },
@@ -85,92 +76,46 @@ export function useNango() {
         // Dynamically import Nango SDK (client-side only)
         const { default: Nango } = await import('@nangohq/frontend');
 
-        console.log('🔄 Initializing Nango SDK...');
+        console.log('🔄 Initializing Nango Connect UI...');
 
-        // ✅ METHOD 1: Pass connectSessionToken in constructor (RECOMMENDED)
-        try {
-          console.log('🚀 Trying Method 1: Constructor with connectSessionToken');
-          const nango = new Nango({ connectSessionToken: sessionToken });
+        // ✅ CORRECT METHOD: Use the new Nango Connect UI pattern
+        const nango = new Nango();
+        
+        const connectUI = nango.openConnectUI({
+          onEvent: (event: any) => {
+            console.log('📡 Nango event:', event);
 
-          return new Promise<void>((resolve, reject) => {
-            nango.openConnectUI({
-              onEvent: (event: any) => {
-                console.log('📡 Nango event (Method 1):', event);
+            if (event.type === 'connect') {
+              toast.success('Connection successful', `Successfully connected to ${providerConfigKey}`);
 
-                if (event.type === 'connect') {
-                  toast.success('Connection successful', `Successfully connected to ${providerConfigKey}`);
+              analytics.capture('Integration Connected', {
+                integration: providerConfigKey,
+                connectionId: event.payload?.connectionId,
+              });
 
-                  analytics.capture('Integration Connected', {
-                    integration: providerConfigKey,
-                    connectionId: event.payload?.connectionId || connectionId,
-                  });
+              setIsConnecting(false);
+            } else if (event.type === 'error') {
+              const errorMessage = event.payload?.error || 'Connection failed';
+              setError(errorMessage);
 
-                  resolve();
-                } else if (event.type === 'error') {
-                  const errorMessage = event.payload?.error || 'Connection failed';
-                  setError(errorMessage);
+              toast.error('Connection failed', errorMessage);
 
-                  toast.error('Connection failed', errorMessage);
+              analytics.capture('Integration Connection Failed', {
+                integration: providerConfigKey,
+                error: errorMessage,
+              });
 
-                  analytics.capture('Integration Connection Failed', {
-                    integration: providerConfigKey,
-                    error: errorMessage,
-                  });
+              setIsConnecting(false);
+            } else if (event.type === 'close') {
+              console.log('🔒 Connect UI closed');
+              setIsConnecting(false);
+            }
+          },
+        });
 
-                  reject(new Error(errorMessage));
-                } else if (event.type === 'close') {
-                  console.log('🔒 Connect UI closed');
-                }
-              },
-            });
-          });
-        } catch (method1Error) {
-          console.warn('⚠️ Method 1 failed, trying Method 2...', method1Error);
+        // Set the session token (this will open the UI)
+        connectUI.setSessionToken(sessionToken);
 
-          // ✅ METHOD 2: Use setSessionToken (FALLBACK)
-          console.log('🚀 Trying Method 2: setSessionToken');
-          const nango = new Nango();
-          
-          // Check if setSessionToken exists
-          if (typeof nango.setSessionToken === 'function') {
-            nango.setSessionToken(sessionToken);
-          } else {
-            throw new Error('Neither connectSessionToken constructor nor setSessionToken method is available');
-          }
-
-          return new Promise<void>((resolve, reject) => {
-            nango.openConnectUI({
-              onEvent: (event: any) => {
-                console.log('📡 Nango event (Method 2):', event);
-
-                if (event.type === 'connect') {
-                  toast.success('Connection successful', `Successfully connected to ${providerConfigKey}`);
-
-                  analytics.capture('Integration Connected', {
-                    integration: providerConfigKey,
-                    connectionId: event.payload?.connectionId || connectionId,
-                  });
-
-                  resolve();
-                } else if (event.type === 'error') {
-                  const errorMessage = event.payload?.error || 'Connection failed';
-                  setError(errorMessage);
-
-                  toast.error('Connection failed', errorMessage);
-
-                  analytics.capture('Integration Connection Failed', {
-                    integration: providerConfigKey,
-                    error: errorMessage,
-                  });
-
-                  reject(new Error(errorMessage));
-                } else if (event.type === 'close') {
-                  console.log('🔒 Connect UI closed');
-                }
-              },
-            });
-          });
-        }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
         setError(message);
@@ -184,9 +129,8 @@ export function useNango() {
           error: message,
         });
 
-        throw err;
-      } finally {
         setIsConnecting(false);
+        throw err;
       }
     },
     [getSessionToken]
@@ -210,4 +154,4 @@ export function useNango() {
     error,
     isAvailable,
   };
-}git add
+}
