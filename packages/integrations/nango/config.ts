@@ -10,12 +10,13 @@ import type { SubscriptionTier } from '@repo/auth/client';
 // ============================================
 
 export type IntegrationKey =
-  | 'google-oauth'
-  | 'spotify-oauth'
-  | 'facebook-oauth'
-  | 'slack-oauth'
-  | 'airtable-oauth'
-  | 'notion-oauth';
+  | 'google-calendar'
+  | 'google-drive'
+  | 'spotify'
+  | 'facebook'
+  | 'slack'
+  | 'airtable'
+  | 'notion';
 
 export interface IntegrationConfig {
   key: IntegrationKey;
@@ -33,19 +34,30 @@ export interface IntegrationConfig {
 // ============================================
 
 export const INTEGRATIONS: Record<IntegrationKey, IntegrationConfig> = {
-  'google-oauth': {
-    key: 'google-oauth',
-    name: 'Google',
-    description: 'Connect your Google account for Gmail, Drive, Calendar',
-    icon: 'Mail',
-    color: 'bg-red-500',
+  'google-calendar': {
+    key: 'google-calendar',
+    name: 'Google Calendar',
+    description: 'Connect your Google Calendar for event management',
+    icon: 'Calendar',
+    color: 'bg-blue-500',
     scopes: ['email', 'profile', 'openid'],
     category: 'productivity',
     requiredTier: 'FREE',
   },
   
-  'spotify-oauth': {
-    key: 'spotify-oauth',
+  'google-drive': {
+    key: 'google-drive',
+    name: 'Google Drive',
+    description: 'Access your Google Drive files and folders',
+    icon: 'HardDrive',
+    color: 'bg-green-500',
+    scopes: ['email', 'profile', 'openid'],
+    category: 'productivity',
+    requiredTier: 'FREE',
+  },
+  
+  'spotify': {
+    key: 'spotify',
     name: 'Spotify',
     description: 'Access your Spotify playlists and music library',
     icon: 'Music',
@@ -55,8 +67,8 @@ export const INTEGRATIONS: Record<IntegrationKey, IntegrationConfig> = {
     requiredTier: 'FREE',
   },
   
-  'facebook-oauth': {
-    key: 'facebook-oauth',
+  'facebook': {
+    key: 'facebook',
     name: 'Facebook',
     description: 'Connect to Facebook pages and posts',
     icon: 'Facebook',
@@ -66,8 +78,8 @@ export const INTEGRATIONS: Record<IntegrationKey, IntegrationConfig> = {
     requiredTier: 'FREE',
   },
   
-  'slack-oauth': {
-    key: 'slack-oauth',
+  'slack': {
+    key: 'slack',
     name: 'Slack',
     description: 'Send messages and manage Slack workspaces',
     icon: 'MessageSquare',
@@ -77,8 +89,8 @@ export const INTEGRATIONS: Record<IntegrationKey, IntegrationConfig> = {
     requiredTier: 'PRO',
   },
   
-  'airtable-oauth': {
-    key: 'airtable-oauth',
+  'airtable': {
+    key: 'airtable',
     name: 'Airtable',
     description: 'Sync data with Airtable bases',
     icon: 'Table',
@@ -88,8 +100,8 @@ export const INTEGRATIONS: Record<IntegrationKey, IntegrationConfig> = {
     requiredTier: 'PRO',
   },
   
-  'notion-oauth': {
-    key: 'notion-oauth',
+  'notion': {
+    key: 'notion',
     name: 'Notion',
     description: 'Connect to Notion pages and databases',
     icon: 'FileText',
@@ -105,23 +117,25 @@ export const INTEGRATIONS: Record<IntegrationKey, IntegrationConfig> = {
 // ============================================
 
 export const TIER_INTEGRATIONS: Record<SubscriptionTier, IntegrationKey[]> = {
-  FREE: ['google-oauth', 'spotify-oauth', 'facebook-oauth'],
+  FREE: ['google-calendar', 'google-drive', 'spotify', 'facebook'],
   
   PRO: [
-    'google-oauth',
-    'spotify-oauth',
-    'facebook-oauth',
-    'slack-oauth',
-    'airtable-oauth',
+    'google-calendar',
+    'google-drive',
+    'spotify',
+    'facebook',
+    'slack',
+    'airtable',
   ],
   
   BUSINESS: [
-    'google-oauth',
-    'spotify-oauth',
-    'facebook-oauth',
-    'slack-oauth',
-    'airtable-oauth',
-    'notion-oauth',
+    'google-calendar',
+    'google-drive',
+    'spotify',
+    'facebook',
+    'slack',
+    'airtable',
+    'notion',
   ],
 };
 
