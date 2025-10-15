@@ -1,0 +1,18 @@
+{
+  "extends": "@repo/typescript-config/base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "paths": {
+      "@repo/design-system/components/ui/*": ["../design-system/components/ui/*"],
+      "@repo/design-system/lib/*": ["../design-system/lib/*"],
+      "@repo/design-system/*": ["../design-system/*"],
+      "@repo/auth/hooks/*": ["../auth/hooks/*"],
+      "@repo/auth/*": ["../auth/*"],
+      "@repo/integrations/*": ["./*"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["node_modules", "dist"]
+}

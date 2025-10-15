@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@repo/design-system/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@repo/design-system/components/ui/tabs';
 import { useSubscription } from '@repo/auth/hooks/use-subscription';
@@ -10,9 +9,8 @@ import { ConnectionCard } from '@repo/integrations/components/connection-card';
 import { getIntegrationsForTier, getLockedIntegrations, type IntegrationKey } from '@repo/integrations/nango/config';
 import { Button } from '@repo/design-system/components/ui/button';
 import { ProBadge } from '@repo/design-system/components/ui/pro-badge';
-import { LockIcon } from 'lucide-react';
+import { LockIcon, PlugIcon, type LucideIcon } from 'lucide-react';
 import * as Icons from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
 
 export function IntegrationsSection() {
   const { tier } = useSubscription();
@@ -49,7 +47,7 @@ export function IntegrationsSection() {
           <TabsContent value="available" className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {availableIntegrations.map((integration) => {
-                const IconComponent = (Icons[integration.icon as keyof typeof Icons] || Icons.PlugIcon) as LucideIcon;
+                const IconComponent = (Icons[integration.icon as keyof typeof Icons] || PlugIcon) as LucideIcon;
                 const connected = isConnected(integration.key);
 
                 return (
@@ -57,7 +55,7 @@ export function IntegrationsSection() {
                     <CardHeader>
                       <div className="flex items-center gap-3">
                         <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${integration.color}`}>
-                          <IconComponent className="h-5 w-5 text-white" size={20} />
+                          <IconComponent className="h-5 w-5 text-white" />
                         </div>
                         <div>
                           <CardTitle className="text-base">{integration.name}</CardTitle>
@@ -103,14 +101,14 @@ export function IntegrationsSection() {
           <TabsContent value="locked" className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {lockedIntegrations.map((integration) => {
-                const IconComponent = (Icons[integration.icon as keyof typeof Icons] || Icons.PlugIcon) as LucideIcon;
+                const IconComponent = (Icons[integration.icon as keyof typeof Icons] || PlugIcon) as LucideIcon;
 
                 return (
                   <Card key={integration.key} className="opacity-60">
                     <CardHeader>
                       <div className="flex items-center gap-3">
                         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-                          <IconComponent className="h-5 w-5" size={20} />
+                          <IconComponent className="h-5 w-5" />
                         </div>
                         <div>
                           <div className="flex items-center gap-2">

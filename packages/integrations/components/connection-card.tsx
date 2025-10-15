@@ -21,6 +21,8 @@ import {
   RefreshCwIcon,
   Trash2Icon,
   XCircleIcon,
+  PlugIcon,
+  type LucideIcon,
 } from 'lucide-react';
 import * as Icons from 'lucide-react';
 import type { Connection } from '../nango/hooks/use-connections';
@@ -82,9 +84,8 @@ export function ConnectionCard({
   const statusConfig = STATUS_CONFIG[connection.status];
   const StatusIcon = statusConfig.icon;
 
-  // Get icon from provider name (fallback to Plug)
-  const IconComponent =
-    Icons[`${connection.provider}Icon` as keyof typeof Icons] || Icons.PlugIcon;
+  // Get icon from provider name (fallback to Plug) - Fixed type casting
+  const IconComponent = (Icons[`${connection.provider}Icon` as keyof typeof Icons] || PlugIcon) as LucideIcon;
 
   return (
     <Card>
