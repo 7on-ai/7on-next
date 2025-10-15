@@ -78,8 +78,8 @@ export function useNango() {
 
         console.log('🔄 Initializing Nango Connect UI...');
 
-        // ✅ CORRECT METHOD: Use the new Nango Connect UI pattern
-        const nango = new Nango();
+        // ✅ CORRECT METHOD: Initialize Nango with empty config
+        const nango = new Nango({ host: 'https://api.nango.dev' });
         
         const connectUI = nango.openConnectUI({
           onEvent: (event: any) => {
