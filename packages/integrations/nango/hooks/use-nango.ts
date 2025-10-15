@@ -6,6 +6,11 @@ import { toast } from '@repo/design-system/components/ui/use-toast';
 import { analytics } from '@repo/analytics/posthog/client';
 import type { IntegrationKey } from '../config';
 
+/**
+ * Nango Hook
+ * Handles OAuth connection flow using Nango Connect UI with Session Token
+ */
+
 interface NangoAuthOptions {
   providerConfigKey: IntegrationKey;
   connectionId?: string;
@@ -22,11 +27,16 @@ export function useNango() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * Get Nango Connect Session Token from backend
+   */
   const getSessionToken = useCallback(
     async (providerConfigKey: string): Promise<string> => {
       if (!user?.id) {
         throw new Error('User not authenticated');
       }
+
+      console.log('🔍 Requesting session token for:', providerConfigKey);
 
       const response = await fetch('/api/nango/session', {
         method: 'POST',
@@ -39,21 +49,31 @@ export function useNango() {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.message || 'Failed to create session token');
+        console.error('❌ Session token error:', error);
+        throw new Error(error.error || 'Failed to create session token');
       }
 
       const data: NangoSessionResponse = await response.json();
+      console.log('✅ Session token received:', {
+        token: data.token.substring(0, 30) + '...',
+        expiresAt: data.expiresAt
+      });
+      
       return data.token;
     },
     [user]
   );
 
+  /**
+   * Connect to an integration using Nango Connect UI
+   */
   const connect = useCallback(
     async ({ providerConfigKey, connectionId, params }: NangoAuthOptions) => {
       setIsConnecting(true);
       setError(null);
 
       try {
+        // Track analytics
         analytics.capture('Integration Connection Initiated', {
           integration: providerConfigKey,
           source: 'dashboard',
@@ -62,54 +82,100 @@ export function useNango() {
         // Get session token from backend
         const sessionToken = await getSessionToken(providerConfigKey);
 
-        // Dynamically import Nango SDK
+        // Dynamically import Nango SDK (client-side only)
         const { default: Nango } = await import('@nangohq/frontend');
 
-        // ✅ สร้าง Nango instance (ไม่ต้องส่ง config ถ้าใช้ default)
-        const nango = new Nango();
+        console.log('🔄 Initializing Nango SDK...');
 
-        // ✅ เปิด Connect UI พร้อม session token
-        return new Promise<void>((resolve, reject) => {
-          nango.openConnectUI({
-            sessionToken: sessionToken, // ✅ ส่ง sessionToken ตรงนี้
-            onEvent: (event: any) => {
-              console.log('Nango event:', event);
+        // ✅ METHOD 1: Pass connectSessionToken in constructor (RECOMMENDED)
+        try {
+          console.log('🚀 Trying Method 1: Constructor with connectSessionToken');
+          const nango = new Nango({ connectSessionToken: sessionToken });
 
-              // ✅ Event type ใหม่คือ 'connect' ไม่ใช่ 'connect.success'
-              if (event.type === 'connect') {
-                toast.success(
-                  'Connection successful',
-                  `Successfully connected to ${providerConfigKey}`
-                );
+          return new Promise<void>((resolve, reject) => {
+            nango.openConnectUI({
+              onEvent: (event: any) => {
+                console.log('📡 Nango event (Method 1):', event);
 
-                analytics.capture('Integration Connected', {
-                  integration: providerConfigKey,
-                  connectionId: event.payload?.connectionId || connectionId,
-                });
+                if (event.type === 'connect') {
+                  toast.success('Connection successful', `Successfully connected to ${providerConfigKey}`);
 
-                resolve();
-              } else if (event.type === 'error') {
-                const errorMessage = event.payload?.error || 'Connection failed';
-                setError(errorMessage);
+                  analytics.capture('Integration Connected', {
+                    integration: providerConfigKey,
+                    connectionId: event.payload?.connectionId || connectionId,
+                  });
 
-                toast.error('Connection failed', errorMessage);
+                  resolve();
+                } else if (event.type === 'error') {
+                  const errorMessage = event.payload?.error || 'Connection failed';
+                  setError(errorMessage);
 
-                analytics.capture('Integration Connection Failed', {
-                  integration: providerConfigKey,
-                  error: errorMessage,
-                });
+                  toast.error('Connection failed', errorMessage);
 
-                reject(new Error(errorMessage));
-              } else if (event.type === 'close') {
-                // UI ถูกปิด (อาจถูก cancel หรือสำเร็จแล้ว)
-                console.log('Connect UI closed');
-              }
-            },
+                  analytics.capture('Integration Connection Failed', {
+                    integration: providerConfigKey,
+                    error: errorMessage,
+                  });
+
+                  reject(new Error(errorMessage));
+                } else if (event.type === 'close') {
+                  console.log('🔒 Connect UI closed');
+                }
+              },
+            });
           });
-        });
+        } catch (method1Error) {
+          console.warn('⚠️ Method 1 failed, trying Method 2...', method1Error);
+
+          // ✅ METHOD 2: Use setSessionToken (FALLBACK)
+          console.log('🚀 Trying Method 2: setSessionToken');
+          const nango = new Nango();
+          
+          // Check if setSessionToken exists
+          if (typeof nango.setSessionToken === 'function') {
+            nango.setSessionToken(sessionToken);
+          } else {
+            throw new Error('Neither connectSessionToken constructor nor setSessionToken method is available');
+          }
+
+          return new Promise<void>((resolve, reject) => {
+            nango.openConnectUI({
+              onEvent: (event: any) => {
+                console.log('📡 Nango event (Method 2):', event);
+
+                if (event.type === 'connect') {
+                  toast.success('Connection successful', `Successfully connected to ${providerConfigKey}`);
+
+                  analytics.capture('Integration Connected', {
+                    integration: providerConfigKey,
+                    connectionId: event.payload?.connectionId || connectionId,
+                  });
+
+                  resolve();
+                } else if (event.type === 'error') {
+                  const errorMessage = event.payload?.error || 'Connection failed';
+                  setError(errorMessage);
+
+                  toast.error('Connection failed', errorMessage);
+
+                  analytics.capture('Integration Connection Failed', {
+                    integration: providerConfigKey,
+                    error: errorMessage,
+                  });
+
+                  reject(new Error(errorMessage));
+                } else if (event.type === 'close') {
+                  console.log('🔒 Connect UI closed');
+                }
+              },
+            });
+          });
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
         setError(message);
+
+        console.error('💥 Connection error:', err);
 
         toast.error('Connection error', message);
 
@@ -126,6 +192,9 @@ export function useNango() {
     [getSessionToken]
   );
 
+  /**
+   * Check if Nango is available (SDK loaded)
+   */
   const isAvailable = useCallback(async () => {
     try {
       await import('@nangohq/frontend');
@@ -141,4 +210,4 @@ export function useNango() {
     error,
     isAvailable,
   };
-}
+}git add
