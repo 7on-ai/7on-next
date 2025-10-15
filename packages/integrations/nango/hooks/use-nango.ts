@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { useUser } from '@repo/auth/client';
-import { useToast } from '@repo/design-system/components/ui/use-toast';
+import { toast } from '@repo/design-system/components/ui/use-toast';
 import { analytics } from '@repo/analytics/posthog/client';
 import type { IntegrationKey } from '../config';
 
@@ -26,7 +26,6 @@ interface NangoSessionResponse {
 
 export function useNango() {
   const { user } = useUser();
-  const { toast } = useToast();
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -87,14 +86,11 @@ export function useNango() {
         return new Promise<void>((resolve, reject) => {
           nango.openConnectUI({
             sessionToken,
-            onEvent: (event) => {
+            onEvent: (event: any) => {
               console.log('Nango event:', event);
 
               if (event.type === 'connect.success') {
-                toast({
-                  title: 'Connection successful',
-                  description: `Successfully connected to ${providerConfigKey}`,
-                });
+                toast.success('Connection successful', `Successfully connected to ${providerConfigKey}`);
 
                 // Track success
                 analytics.capture('Integration Connected', {
@@ -107,11 +103,7 @@ export function useNango() {
                 const errorMessage = event.payload?.error || 'Connection failed';
                 setError(errorMessage);
 
-                toast({
-                  title: 'Connection failed',
-                  description: errorMessage,
-                  variant: 'destructive',
-                });
+                toast.error('Connection failed', errorMessage);
 
                 // Track failure
                 analytics.capture('Integration Connection Failed', {
@@ -121,10 +113,7 @@ export function useNango() {
 
                 reject(new Error(errorMessage));
               } else if (event.type === 'connect.cancelled') {
-                toast({
-                  title: 'Connection cancelled',
-                  description: 'You cancelled the connection',
-                });
+                toast.info('Connection cancelled', 'You cancelled the connection');
 
                 reject(new Error('Connection cancelled by user'));
               }
@@ -135,11 +124,7 @@ export function useNango() {
         const message = err instanceof Error ? err.message : 'Unknown error';
         setError(message);
 
-        toast({
-          title: 'Connection error',
-          description: message,
-          variant: 'destructive',
-        });
+        toast.error('Connection error', message);
 
         // Track error
         analytics.capture('Integration Connection Failed', {
@@ -152,7 +137,7 @@ export function useNango() {
         setIsConnecting(false);
       }
     },
-    [getSessionToken, toast]
+    [getSessionToken]
   );
 
   /**

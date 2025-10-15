@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useUser } from '@repo/auth/client';
-import { useToast } from '@repo/design-system/components/ui/use-toast';
+import { toast } from '@repo/design-system/components/ui/use-toast';
 import { analytics } from '@repo/analytics/posthog/client';
 
 export interface Connection {
@@ -36,7 +36,6 @@ interface UseConnectionsOptions {
 export function useConnections(options: UseConnectionsOptions = {}) {
   const { autoFetch = true, refetchInterval } = options;
   const { user } = useUser();
-  const { toast } = useToast();
 
   const [connections, setConnections] = useState<Connection[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -97,23 +96,16 @@ export function useConnections(options: UseConnectionsOptions = {}) {
           });
         }
 
-        toast({
-          title: 'Disconnected',
-          description: 'Integration disconnected successfully',
-        });
+        toast.success('Disconnected', 'Integration disconnected successfully');
 
         await fetchConnections();
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
-        toast({
-          title: 'Disconnection failed',
-          description: message,
-          variant: 'destructive',
-        });
+        toast.error('Disconnection failed', message);
         throw err;
       }
     },
-    [user, connections, fetchConnections, toast]
+    [user, connections, fetchConnections]
   );
 
   const refresh = useCallback(
@@ -129,23 +121,16 @@ export function useConnections(options: UseConnectionsOptions = {}) {
           throw new Error('Failed to refresh connection');
         }
 
-        toast({
-          title: 'Refreshed',
-          description: 'Connection refreshed successfully',
-        });
+        toast.success('Refreshed', 'Connection refreshed successfully');
 
         await fetchConnections();
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
-        toast({
-          title: 'Refresh failed',
-          description: message,
-          variant: 'destructive',
-        });
+        toast.error('Refresh failed', message);
         throw err;
       }
     },
-    [user, fetchConnections, toast]
+    [user, fetchConnections]
   );
 
   const getConnectionsByStatus = useCallback(
