@@ -65,12 +65,15 @@ export function useNango() {
         // Dynamically import Nango SDK
         const { default: Nango } = await import('@nangohq/frontend');
 
-        // ✅ Initialize Nango with session token
-        const nango = new Nango({ connectSessionToken: sessionToken });
+        // ✅ Initialize Nango (without session token)
+        const nango = new Nango({
+          host: 'https://api.nango.dev'
+        });
 
-        // ✅ Open Connect UI (ไม่ต้องส่ง sessionToken อีก)
+        // ✅ Open Connect UI with session token
         return new Promise<void>((resolve, reject) => {
           nango.openConnectUI({
+            sessionToken: sessionToken, // ✅ ส่งที่นี่
             onEvent: (event: any) => {
               console.log('Nango event:', event);
 
