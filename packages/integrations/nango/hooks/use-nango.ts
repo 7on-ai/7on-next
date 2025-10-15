@@ -76,10 +76,12 @@ export function useNango() {
         // Dynamically import Nango SDK (client-side only)
         const { default: Nango } = await import('@nangohq/frontend');
 
-        console.log('🔄 Initializing Nango Connect UI...');
+        console.log('🔄 Initializing Nango Connect UI with session token...');
 
-        // ✅ CORRECT METHOD: Initialize Nango with empty config
-        const nango = new Nango({ host: 'https://api.nango.dev' });
+        // ✅ CORRECT METHOD: Initialize Nango with connectSessionToken
+        const nango = new Nango({ 
+          connectSessionToken: sessionToken 
+        });
         
         const connectUI = nango.openConnectUI({
           onEvent: (event: any) => {
@@ -112,9 +114,6 @@ export function useNango() {
             }
           },
         });
-
-        // Set the session token (this will open the UI)
-        connectUI.setSessionToken(sessionToken);
 
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
