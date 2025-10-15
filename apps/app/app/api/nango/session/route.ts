@@ -40,8 +40,9 @@ export async function POST(request: Request) {
       );
     }
 
+    // ✅ แก้ไข: ใช้ end_user object และ allowed_integrations ที่ถูกต้อง
     const nangoResponse = await fetch(
-      'https://api.nango.dev/api/v1/connect/sessions',
+      'https://api.nango.dev/connect/sessions',
       {
         method: 'POST',
         headers: {
@@ -49,16 +50,25 @@ export async function POST(request: Request) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          end_user_id: connectionId || userId,
-          allowed_integrations: [{ provider_config_key: providerConfigKey }],
-          ...(params && { params }),
+          end_user: {
+            id: connectionId || userId,
+          },
+          allowed_integrations: [
+            {
+              provider_config_key: providerConfigKey,
+            }
+          ],
+          ...(params && { integration_params: params }),
         }),
       }
     );
 
     if (!nangoResponse.ok) {
       const errorData = await nangoResponse.json();
-      log.error('Nango session creation failed', { error: errorData });
+      log.error('Nango session creation failed', { 
+        error: errorData,
+        status: nangoResponse.status 
+      });
       return NextResponse.json(
         { error: errorData.message || 'Failed to create session token' },
         { status: nangoResponse.status }
