@@ -90,12 +90,9 @@ export function useConnections(options: UseConnectionsOptions = {}) {
 
         const connection = connections.find((c) => c.connectionId === connectionId);
         if (connection) {
-          analytics.capture({
-            event: 'Integration Disconnected',
-            properties: {
-              integration: connection.providerConfigKey,
-              connectionId,
-            },
+          analytics.capture('Integration Disconnected', {
+            integration: connection.providerConfigKey,
+            connectionId,
           });
         }
 
