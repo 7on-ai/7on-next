@@ -65,20 +65,22 @@ export function useNango() {
         // Dynamically import Nango SDK
         const { default: Nango } = await import('@nangohq/frontend');
 
-        // ✅ Initialize Nango (without session token)
-        const nango = new Nango({
-          host: 'https://api.nango.dev'
-        });
+        // ✅ สร้าง Nango instance (ไม่ต้องส่ง config ถ้าใช้ default)
+        const nango = new Nango();
 
-        // ✅ Open Connect UI with session token
+        // ✅ เปิด Connect UI พร้อม session token
         return new Promise<void>((resolve, reject) => {
           nango.openConnectUI({
-            sessionToken: sessionToken, // ✅ ส่งที่นี่
+            sessionToken: sessionToken, // ✅ ส่ง sessionToken ตรงนี้
             onEvent: (event: any) => {
               console.log('Nango event:', event);
 
-              if (event.type === 'connect.success') {
-                toast.success('Connection successful', `Successfully connected to ${providerConfigKey}`);
+              // ✅ Event type ใหม่คือ 'connect' ไม่ใช่ 'connect.success'
+              if (event.type === 'connect') {
+                toast.success(
+                  'Connection successful',
+                  `Successfully connected to ${providerConfigKey}`
+                );
 
                 analytics.capture('Integration Connected', {
                   integration: providerConfigKey,
@@ -86,7 +88,7 @@ export function useNango() {
                 });
 
                 resolve();
-              } else if (event.type === 'connect.error') {
+              } else if (event.type === 'error') {
                 const errorMessage = event.payload?.error || 'Connection failed';
                 setError(errorMessage);
 
@@ -98,10 +100,9 @@ export function useNango() {
                 });
 
                 reject(new Error(errorMessage));
-              } else if (event.type === 'connect.cancelled') {
-                toast.info('Connection cancelled', 'You cancelled the connection');
-
-                reject(new Error('Connection cancelled by user'));
+              } else if (event.type === 'close') {
+                // UI ถูกปิด (อาจถูก cancel หรือสำเร็จแล้ว)
+                console.log('Connect UI closed');
               }
             },
           });
