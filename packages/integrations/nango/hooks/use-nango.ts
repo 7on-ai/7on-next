@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { useUser } from '@repo/auth/client';
-import { toast } from '@repo/design-system/components/ui/use-toast';
+import { useToast } from '@repo/design-system/components/ui/use-toast';
 import { analytics } from '@repo/analytics/posthog/client';
 import type { IntegrationKey } from '../config';
 
@@ -26,6 +26,7 @@ interface NangoSessionResponse {
 
 export function useNango() {
   const { user } = useUser();
+  const { toast } = useToast();
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -68,12 +69,9 @@ export function useNango() {
 
       try {
         // Track analytics
-        analytics.capture({
-          event: 'Integration Connection Initiated',
-          properties: {
-            integration: providerConfigKey,
-            source: 'dashboard',
-          },
+        analytics.capture('Integration Connection Initiated', {
+          integration: providerConfigKey,
+          source: 'dashboard',
         });
 
         // Get session token from backend
@@ -99,12 +97,9 @@ export function useNango() {
                 });
 
                 // Track success
-                analytics.capture({
-                  event: 'Integration Connected',
-                  properties: {
-                    integration: providerConfigKey,
-                    connectionId: event.payload?.connectionId || connectionId,
-                  },
+                analytics.capture('Integration Connected', {
+                  integration: providerConfigKey,
+                  connectionId: event.payload?.connectionId || connectionId,
                 });
 
                 resolve();
@@ -119,12 +114,9 @@ export function useNango() {
                 });
 
                 // Track failure
-                analytics.capture({
-                  event: 'Integration Connection Failed',
-                  properties: {
-                    integration: providerConfigKey,
-                    error: errorMessage,
-                  },
+                analytics.capture('Integration Connection Failed', {
+                  integration: providerConfigKey,
+                  error: errorMessage,
                 });
 
                 reject(new Error(errorMessage));
@@ -150,12 +142,9 @@ export function useNango() {
         });
 
         // Track error
-        analytics.capture({
-          event: 'Integration Connection Failed',
-          properties: {
-            integration: providerConfigKey,
-            error: message,
-          },
+        analytics.capture('Integration Connection Failed', {
+          integration: providerConfigKey,
+          error: message,
         });
 
         throw err;
@@ -163,7 +152,7 @@ export function useNango() {
         setIsConnecting(false);
       }
     },
-    [getSessionToken]
+    [getSessionToken, toast]
   );
 
   /**

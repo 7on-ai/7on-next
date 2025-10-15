@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useUser } from '@repo/auth/client';
-import { toast } from '@repo/design-system/components/ui/use-toast';
+import { useToast } from '@repo/design-system/components/ui/use-toast';
 import { analytics } from '@repo/analytics/posthog/client';
 
 export interface Connection {
@@ -36,6 +36,7 @@ interface UseConnectionsOptions {
 export function useConnections(options: UseConnectionsOptions = {}) {
   const { autoFetch = true, refetchInterval } = options;
   const { user } = useUser();
+  const { toast } = useToast();
 
   const [connections, setConnections] = useState<Connection[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -112,7 +113,7 @@ export function useConnections(options: UseConnectionsOptions = {}) {
         throw err;
       }
     },
-    [user, connections, fetchConnections]
+    [user, connections, fetchConnections, toast]
   );
 
   const refresh = useCallback(
@@ -144,7 +145,7 @@ export function useConnections(options: UseConnectionsOptions = {}) {
         throw err;
       }
     },
-    [user, fetchConnections]
+    [user, fetchConnections, toast]
   );
 
   const getConnectionsByStatus = useCallback(
