@@ -5,11 +5,15 @@
     "jsx": "react-jsx",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "paths": {
+      "@repo/auth/client": ["../auth/client.ts"],
+      "@repo/auth/server": ["../auth/server.ts"],
+      "@repo/auth/hooks/*": ["../auth/src/hooks/*"],
+      "@repo/auth/*": ["../auth/*"],
       "@repo/design-system/components/ui/*": ["../design-system/components/ui/*"],
       "@repo/design-system/lib/*": ["../design-system/lib/*"],
       "@repo/design-system/*": ["../design-system/*"],
-      "@repo/auth/hooks/*": ["../auth/hooks/*"],
-      "@repo/auth/*": ["../auth/*"],
+      "@repo/analytics/posthog/client": ["../analytics/posthog/client.ts"],
+      "@repo/analytics/*": ["../analytics/*"],
       "@repo/integrations/*": ["./*"]
     }
   },
