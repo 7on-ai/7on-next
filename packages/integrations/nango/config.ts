@@ -37,7 +37,7 @@ export const INTEGRATIONS: Record<IntegrationKey, IntegrationConfig> = {
   'google-calendar': {
     key: 'google-calendar',
     name: 'Google Calendar',
-    description: 'Connect your Google Calendar for event management',
+    description: 'Connect your Google Calendar',
     icon: 'Calendar',
     color: 'bg-blue-500',
     scopes: ['email', 'profile', 'openid'],
