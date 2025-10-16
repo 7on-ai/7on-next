@@ -127,14 +127,14 @@ export async function POST(request: Request) {
     }
 
     log.info('📦 Nango response parsed', {
-      hasToken: !!sessionData.token,
-      tokenLength: sessionData.token?.length,
-      tokenPrefix: sessionData.token?.substring(0, 20),
-      expiresAt: sessionData.expires_at,
+      hasToken: !!sessionData.data?.token,
+      tokenLength: sessionData.data?.token?.length,
+      tokenPrefix: sessionData.data?.token?.substring(0, 20),
+      expiresAt: sessionData.data?.expires_at,
     });
 
     // Validate token exists
-    if (!sessionData.token) {
+    if (!sessionData.data?.token) {
       log.error('❌ No token in Nango response', { 
         sessionData,
         responseKeys: Object.keys(sessionData),
@@ -151,12 +151,12 @@ export async function POST(request: Request) {
     log.info('✅ Session token created successfully', {
       userId,
       providerConfigKey,
-      tokenLength: sessionData.token.length,
+      tokenLength: sessionData.data.token.length,
     });
 
     return NextResponse.json({
-      token: sessionData.token,
-      expiresAt: sessionData.expires_at,
+      token: sessionData.data.token,
+      expiresAt: sessionData.data.expires_at,
     });
     
   } catch (error) {
