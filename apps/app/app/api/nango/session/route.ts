@@ -45,12 +45,12 @@ export async function POST(request: Request) {
       );
     }
 
-    // ✅ Request body according to Nango API docs
+    // ✅ FIXED: Correct request body according to Nango API docs
     // https://docs.nango.dev/reference/api/connect-sessions/post
     const requestBody = {
       end_user: {
         id: userId,
-        organization_id: userId, // Optional but recommended
+        // ✅ No organization_id here! It was causing 400 Bad Request
       },
       allowed_integrations: [providerConfigKey],
     };
@@ -81,6 +81,7 @@ export async function POST(request: Request) {
       statusText: nangoResponse.statusText,
       contentType: nangoResponse.headers.get('content-type'),
       bodyLength: responseText.length,
+      bodyPreview: responseText.substring(0, 200),
     });
 
     // Handle non-OK responses
@@ -99,7 +100,6 @@ export async function POST(request: Request) {
         requestBody,
       });
       
-      // Return user-friendly error
       return NextResponse.json(
         { 
           error: errorData.error || errorData.message || 'Failed to create session',
@@ -124,12 +124,11 @@ export async function POST(request: Request) {
       );
     }
 
-    // Log the full response for debugging
-    log.info('📦 Nango response data', {
-      keys: Object.keys(sessionData),
+    log.info('📦 Nango response parsed', {
       hasToken: !!sessionData.token,
       tokenLength: sessionData.token?.length,
-      tokenPrefix: sessionData.token?.substring(0, 15),
+      tokenPrefix: sessionData.token?.substring(0, 20),
+      expiresAt: sessionData.expires_at,
     });
 
     // Validate token exists
@@ -151,17 +150,15 @@ export async function POST(request: Request) {
       userId,
       providerConfigKey,
       tokenLength: sessionData.token.length,
-      expiresAt: sessionData.expires_at,
     });
 
-    // Return consistent camelCase response
     return NextResponse.json({
       token: sessionData.token,
       expiresAt: sessionData.expires_at,
     });
     
   } catch (error) {
-    log.error('💥 Unexpected error', { 
+    log.error('💥 Unexpected error in session endpoint', { 
       error,
       message: error instanceof Error ? error.message : 'Unknown',
       stack: error instanceof Error ? error.stack : undefined,
