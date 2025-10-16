@@ -74,14 +74,22 @@ export function useNango() {
         // Dynamically import Nango SDK (client-side only)
         const { default: Nango } = await import('@nangohq/frontend');
 
-        console.log('🚀 Opening Nango Connect UI...');
+        // Get session token from backend FIRST
+        console.log('🔑 Fetching session token...');
+        const sessionToken = await getSessionToken(providerConfigKey);
+        console.log('✅ Token received, length:', sessionToken?.length);
 
-        // ✅ วิธีที่ถูกต้องตามเอกสาร Nango:
-        // 1. Initialize Nango without parameters
-        const nango = new Nango();
+        console.log('🚀 Initializing Nango with session token...');
+
+        // ✅ CRITICAL: Pass session token in constructor
+        // Based on latest Nango docs and error message
+        const nango = new Nango({ 
+          connectSessionToken: sessionToken 
+        });
         
-        // 2. Open Connect UI first (จะแสดง loading)
-        const connectUI = nango.openConnectUI({
+        // 2. Open Connect UI (ไม่ต้อง setSessionToken ทีหลัง)
+        console.log('🎨 Opening Connect UI...');
+        nango.openConnectUI({
           onEvent: (event: any) => {
             console.log('📡 Nango event:', event);
 
