@@ -70,19 +70,15 @@ export function useNango() {
           source: 'dashboard',
         });
 
-        // Get session token from backend
-        const sessionToken = await getSessionToken(providerConfigKey);
-
         // Dynamically import Nango SDK (client-side only)
         const { default: Nango } = await import('@nangohq/frontend');
 
-        console.log('🔄 Initializing Nango Connect UI with session token...');
+        console.log('🔄 Opening Nango Connect UI...');
 
-        // ✅ CORRECT METHOD: Initialize Nango with connectSessionToken
-        const nango = new Nango({ 
-          connectSessionToken: sessionToken 
-        });
+        // ✅ CORRECT METHOD: Initialize without connectSessionToken
+        const nango = new Nango({ host: 'https://api.nango.dev' });
         
+        // Open Connect UI first
         const connectUI = nango.openConnectUI({
           onEvent: (event: any) => {
             console.log('📡 Nango event:', event);
@@ -114,6 +110,14 @@ export function useNango() {
             }
           },
         });
+
+        // Get session token from backend AFTER opening UI
+        console.log('🔑 Fetching session token...');
+        const sessionToken = await getSessionToken(providerConfigKey);
+        
+        // Set the session token (this will activate the UI)
+        console.log('✅ Setting session token...');
+        connectUI.setSessionToken(sessionToken);
 
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
