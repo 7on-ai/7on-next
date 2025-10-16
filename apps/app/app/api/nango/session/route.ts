@@ -49,12 +49,8 @@ export async function POST(request: Request) {
     const requestBody = {
       end_user: {
         id: userId,
-        // Optional fields you can add:
-        // email: userEmail,
-        // display_name: userName,
-        // tags: { organizationId: orgId }
       },
-      allowed_integrations: [providerConfigKey],  // Array of integration IDs
+      allowed_integrations: [providerConfigKey],
     };
 
     log.info('🔄 Calling Nango API', { requestBody });
@@ -102,13 +98,27 @@ export async function POST(request: Request) {
 
     const sessionData: SessionTokenResponse = JSON.parse(responseText);
 
+    // ✅ VALIDATE response has required fields
+    if (!sessionData.token) {
+      log.error('❌ No token in Nango response', { sessionData });
+      return NextResponse.json(
+        { error: 'Invalid response from Nango: missing token' },
+        { status: 500 }
+      );
+    }
+
     log.info('✅ Nango session token created', {
       userId,
       providerConfigKey,
       expiresAt: sessionData.expiresAt,
+      tokenLength: sessionData.token.length,
     });
 
-    return NextResponse.json(sessionData);
+    // ✅ Return the exact structure frontend expects
+    return NextResponse.json({
+      token: sessionData.token,
+      expiresAt: sessionData.expiresAt,
+    });
   } catch (error) {
     log.error('💥 Session token creation error', { 
       error,

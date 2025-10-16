@@ -40,7 +40,12 @@ export const INTEGRATIONS: Record<IntegrationKey, IntegrationConfig> = {
     description: 'Connect your Google Calendar',
     icon: 'Calendar',
     color: 'bg-blue-500',
-    scopes: ['email', 'profile', 'openid'],
+    // ✅ Correct scopes for Google Calendar
+    scopes: [
+      'https://www.googleapis.com/auth/calendar',
+      'https://www.googleapis.com/auth/userinfo.email',
+      'https://www.googleapis.com/auth/userinfo.profile',
+    ],
     category: 'productivity',
     requiredTier: 'FREE',
   },
@@ -51,7 +56,12 @@ export const INTEGRATIONS: Record<IntegrationKey, IntegrationConfig> = {
     description: 'Access your Google Drive',
     icon: 'HardDrive',
     color: 'bg-green-500',
-    scopes: ['email', 'profile', 'openid'],
+    // ✅ Correct scopes for Google Drive
+    scopes: [
+      'https://www.googleapis.com/auth/drive',
+      'https://www.googleapis.com/auth/userinfo.email',
+      'https://www.googleapis.com/auth/userinfo.profile',
+    ],
     category: 'productivity',
     requiredTier: 'FREE',
   },
@@ -62,7 +72,13 @@ export const INTEGRATIONS: Record<IntegrationKey, IntegrationConfig> = {
     description: 'Access your Spotify playlists',
     icon: 'Music',
     color: 'bg-green-500',
-    scopes: ['user-read-email', 'user-read-private'],
+    // ✅ Correct scopes for Spotify
+    scopes: [
+      'user-read-email',
+      'user-read-private',
+      'playlist-read-private',
+      'playlist-read-collaborative',
+    ],
     category: 'social',
     requiredTier: 'FREE',
   },
@@ -73,7 +89,11 @@ export const INTEGRATIONS: Record<IntegrationKey, IntegrationConfig> = {
     description: 'Connect to Facebook pages and posts',
     icon: 'Facebook',
     color: 'bg-blue-600',
-    scopes: ['email', 'public_profile'],
+    // ✅ Correct scopes for Facebook
+    scopes: [
+      'email',
+      'public_profile',
+    ],
     category: 'social',
     requiredTier: 'FREE',
   },
@@ -84,7 +104,12 @@ export const INTEGRATIONS: Record<IntegrationKey, IntegrationConfig> = {
     description: 'Send messages and manage Slack workspaces',
     icon: 'MessageSquare',
     color: 'bg-purple-500',
-    scopes: ['chat:write', 'channels:read'],
+    // ✅ Correct scopes for Slack
+    scopes: [
+      'chat:write',
+      'channels:read',
+      'users:read',
+    ],
     category: 'communication',
     requiredTier: 'PRO',
   },
@@ -95,7 +120,12 @@ export const INTEGRATIONS: Record<IntegrationKey, IntegrationConfig> = {
     description: 'Sync data with Airtable bases',
     icon: 'Table',
     color: 'bg-orange-500',
-    scopes: ['data.records:read', 'data.records:write'],
+    // ✅ Correct scopes for Airtable
+    scopes: [
+      'data.records:read',
+      'data.records:write',
+      'schema.bases:read',
+    ],
     category: 'data',
     requiredTier: 'PRO',
   },
@@ -106,7 +136,12 @@ export const INTEGRATIONS: Record<IntegrationKey, IntegrationConfig> = {
     description: 'Connect to Notion pages and databases',
     icon: 'FileText',
     color: 'bg-black',
-    scopes: ['read_content', 'update_content'],
+    // ✅ Correct scopes for Notion
+    scopes: [
+      'read_content',
+      'update_content',
+      'insert_content',
+    ],
     category: 'productivity',
     requiredTier: 'BUSINESS',
   },
@@ -143,17 +178,11 @@ export const TIER_INTEGRATIONS: Record<SubscriptionTier, IntegrationKey[]> = {
 // HELPER FUNCTIONS
 // ============================================
 
-/**
- * Get integrations available for a tier
- */
 export function getIntegrationsForTier(tier: SubscriptionTier): IntegrationConfig[] {
   const keys = TIER_INTEGRATIONS[tier];
   return keys.map((key) => INTEGRATIONS[key]);
 }
 
-/**
- * Get locked integrations (not available for tier)
- */
 export function getLockedIntegrations(tier: SubscriptionTier): IntegrationConfig[] {
   const availableKeys = TIER_INTEGRATIONS[tier];
   const allKeys = Object.keys(INTEGRATIONS) as IntegrationKey[];
@@ -163,9 +192,6 @@ export function getLockedIntegrations(tier: SubscriptionTier): IntegrationConfig
     .map((key) => INTEGRATIONS[key]);
 }
 
-/**
- * Check if integration is available for tier
- */
 export function isIntegrationAvailable(
   integrationKey: IntegrationKey,
   tier: SubscriptionTier
@@ -173,16 +199,10 @@ export function isIntegrationAvailable(
   return TIER_INTEGRATIONS[tier].includes(integrationKey);
 }
 
-/**
- * Get integration by key
- */
 export function getIntegration(key: IntegrationKey): IntegrationConfig | undefined {
   return INTEGRATIONS[key];
 }
 
-/**
- * Get all integrations grouped by category
- */
 export function getIntegrationsByCategory() {
   const grouped: Record<string, IntegrationConfig[]> = {};
   

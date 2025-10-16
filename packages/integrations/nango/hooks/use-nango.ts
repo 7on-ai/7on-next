@@ -47,8 +47,15 @@ export function useNango() {
         throw new Error(error.error || 'Failed to create session token');
       }
 
-      const data: NangoSessionResponse = await response.json();
-      console.log('✅ Session token received');
+      const data = await response.json();
+      console.log('✅ Session response received:', data);
+      console.log('🔍 Token exists:', !!data.token);
+      console.log('🔍 Token length:', data.token?.length);
+      
+      if (!data.token) {
+        console.error('❌ No token in response:', data);
+        throw new Error('Session token not found in response');
+      }
       
       return data.token;
     },
