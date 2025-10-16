@@ -57,6 +57,7 @@ export function useNango() {
 
   /**
    * Connect to an integration using Nango Connect UI
+   * ตามเอกสาร: https://docs.nango.dev/integrate/guides/authorize-an-api
    */
   const connect = useCallback(
     async ({ providerConfigKey, connectionId, params }: NangoAuthOptions) => {
@@ -73,12 +74,13 @@ export function useNango() {
         // Dynamically import Nango SDK (client-side only)
         const { default: Nango } = await import('@nangohq/frontend');
 
-        console.log('🔄 Opening Nango Connect UI...');
+        console.log('🚀 Opening Nango Connect UI...');
 
-        // ✅ CORRECT METHOD: Initialize without connectSessionToken
-        const nango = new Nango({ host: 'https://api.nango.dev' });
+        // ✅ วิธีที่ถูกต้องตามเอกสาร Nango:
+        // 1. Initialize Nango without parameters
+        const nango = new Nango();
         
-        // Open Connect UI first
+        // 2. Open Connect UI first (จะแสดง loading)
         const connectUI = nango.openConnectUI({
           onEvent: (event: any) => {
             console.log('📡 Nango event:', event);
@@ -111,12 +113,12 @@ export function useNango() {
           },
         });
 
-        // Get session token from backend AFTER opening UI
+        // 3. Fetch session token from backend
         console.log('🔑 Fetching session token...');
         const sessionToken = await getSessionToken(providerConfigKey);
         
-        // Set the session token (this will activate the UI)
-        console.log('✅ Setting session token...');
+        // 4. Set session token (UI จะเปลี่ยนจาก loading เป็นพร้อมใช้งาน)
+        console.log('✅ Setting session token to Connect UI');
         connectUI.setSessionToken(sessionToken);
 
       } catch (err) {
