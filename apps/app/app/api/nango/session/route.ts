@@ -6,9 +6,9 @@ interface SessionTokenRequest {
   providerConfigKey: string;
 }
 
-interface SessionTokenResponse {
+interface NangoSessionResponse {
   token: string;
-  expiresAt: string;
+  expires_at?: string;
 }
 
 export async function POST(request: Request) {
@@ -29,9 +29,9 @@ export async function POST(request: Request) {
     });
 
     if (!providerConfigKey) {
-      log.error('❌ Missing providerConfigKey', { body });
+      log.error('❌ Missing providerConfigKey');
       return NextResponse.json(
-        { error: 'providerConfigKey is required', field: 'providerConfigKey' },
+        { error: 'providerConfigKey is required' },
         { status: 400 }
       );
     }
@@ -45,15 +45,21 @@ export async function POST(request: Request) {
       );
     }
 
-    // ✅ CORRECT REQUEST BODY according to Nango docs
+    // ✅ Request body according to Nango API docs
+    // https://docs.nango.dev/reference/api/connect-sessions/post
     const requestBody = {
       end_user: {
         id: userId,
+        organization_id: userId, // Optional but recommended
       },
       allowed_integrations: [providerConfigKey],
     };
 
-    log.info('🔄 Calling Nango API', { requestBody });
+    log.info('🔄 Calling Nango Connect Sessions API', { 
+      endpoint: 'https://api.nango.dev/connect/sessions',
+      providerConfigKey,
+      userId,
+    });
 
     const nangoResponse = await fetch(
       'https://api.nango.dev/connect/sessions',
@@ -67,67 +73,105 @@ export async function POST(request: Request) {
       }
     );
 
+    // Get response as text first for better error handling
     const responseText = await nangoResponse.text();
-    log.info('📡 Nango response', { 
+    
+    log.info('📡 Nango API response', { 
       status: nangoResponse.status,
-      bodyLength: responseText.length
+      statusText: nangoResponse.statusText,
+      contentType: nangoResponse.headers.get('content-type'),
+      bodyLength: responseText.length,
     });
 
+    // Handle non-OK responses
     if (!nangoResponse.ok) {
-      let errorData;
+      let errorData: any;
       try {
         errorData = JSON.parse(responseText);
       } catch {
         errorData = { message: responseText };
       }
       
-      log.error('❌ Nango session creation failed', { 
-        error: errorData,
+      log.error('❌ Nango API error', { 
         status: nangoResponse.status,
-        requestBody 
+        statusText: nangoResponse.statusText,
+        error: errorData,
+        requestBody,
       });
       
+      // Return user-friendly error
       return NextResponse.json(
         { 
-          error: errorData.message || errorData.error || 'Failed to create session token',
-          details: errorData 
+          error: errorData.error || errorData.message || 'Failed to create session',
+          details: errorData,
         },
         { status: nangoResponse.status }
       );
     }
 
-    const sessionData: SessionTokenResponse = JSON.parse(responseText);
-
-    // ✅ VALIDATE response has required fields
-    if (!sessionData.token) {
-      log.error('❌ No token in Nango response', { sessionData });
+    // Parse successful response
+    let sessionData: NangoSessionResponse;
+    try {
+      sessionData = JSON.parse(responseText);
+    } catch (parseError) {
+      log.error('❌ Failed to parse Nango response', { 
+        responseText,
+        parseError: parseError instanceof Error ? parseError.message : 'Unknown',
+      });
       return NextResponse.json(
-        { error: 'Invalid response from Nango: missing token' },
+        { error: 'Invalid response from Nango API' },
         { status: 500 }
       );
     }
 
-    log.info('✅ Nango session token created', {
-      userId,
-      providerConfigKey,
-      expiresAt: sessionData.expiresAt,
-      tokenLength: sessionData.token.length,
+    // Log the full response for debugging
+    log.info('📦 Nango response data', {
+      keys: Object.keys(sessionData),
+      hasToken: !!sessionData.token,
+      tokenLength: sessionData.token?.length,
+      tokenPrefix: sessionData.token?.substring(0, 15),
     });
 
-    // ✅ Return the exact structure frontend expects
+    // Validate token exists
+    if (!sessionData.token) {
+      log.error('❌ No token in Nango response', { 
+        sessionData,
+        responseKeys: Object.keys(sessionData),
+      });
+      return NextResponse.json(
+        { 
+          error: 'No token in Nango response',
+          receivedKeys: Object.keys(sessionData),
+        },
+        { status: 500 }
+      );
+    }
+
+    log.info('✅ Session token created successfully', {
+      userId,
+      providerConfigKey,
+      tokenLength: sessionData.token.length,
+      expiresAt: sessionData.expires_at,
+    });
+
+    // Return consistent camelCase response
     return NextResponse.json({
       token: sessionData.token,
-      expiresAt: sessionData.expiresAt,
+      expiresAt: sessionData.expires_at,
     });
+    
   } catch (error) {
-    log.error('💥 Session token creation error', { 
+    log.error('💥 Unexpected error', { 
       error,
       message: error instanceof Error ? error.message : 'Unknown',
-      stack: error instanceof Error ? error.stack : undefined
+      stack: error instanceof Error ? error.stack : undefined,
     });
     
     return NextResponse.json(
-      { error: 'Internal server error', message: error instanceof Error ? error.message : 'Unknown error' },
+      { 
+        error: 'Internal server error',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      },
       { status: 500 }
     );
   }
