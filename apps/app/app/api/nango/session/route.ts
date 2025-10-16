@@ -7,8 +7,10 @@ interface SessionTokenRequest {
 }
 
 interface NangoSessionResponse {
-  token: string;
-  expires_at?: string;
+  data: {
+    token: string;
+    expires_at?: string;
+  };
 }
 
 export async function POST(request: Request) {
