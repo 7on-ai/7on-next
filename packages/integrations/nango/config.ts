@@ -48,7 +48,7 @@ export const INTEGRATIONS: Record<IntegrationKey, IntegrationConfig> = {
   'google-drive': {
     key: 'google-drive',
     name: 'Google Drive',
-    description: 'Access your Google Drive files and folders',
+    description: 'Access your Google Drive',
     icon: 'HardDrive',
     color: 'bg-green-500',
     scopes: ['email', 'profile', 'openid'],
@@ -59,7 +59,7 @@ export const INTEGRATIONS: Record<IntegrationKey, IntegrationConfig> = {
   'spotify': {
     key: 'spotify',
     name: 'Spotify',
-    description: 'Access your Spotify playlists and music library',
+    description: 'Access your Spotify playlists',
     icon: 'Music',
     color: 'bg-green-500',
     scopes: ['user-read-email', 'user-read-private'],
