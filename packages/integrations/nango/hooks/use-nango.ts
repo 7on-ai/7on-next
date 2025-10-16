@@ -78,14 +78,16 @@ export function useNango() {
         console.log('🔑 Fetching session token...');
         const sessionToken = await getSessionToken(providerConfigKey);
         console.log('✅ Token received, length:', sessionToken?.length);
+        console.log('🔍 Token preview:', sessionToken?.substring(0, 20) + '...');
 
         console.log('🚀 Initializing Nango with session token...');
 
         // ✅ CRITICAL: Pass session token in constructor
-        // Based on latest Nango docs and error message
         const nango = new Nango({ 
           connectSessionToken: sessionToken 
         });
+        
+        console.log('✅ Nango instance created');
         
         // 2. Open Connect UI (ไม่ต้อง setSessionToken ทีหลัง)
         console.log('🎨 Opening Connect UI...');
@@ -120,14 +122,6 @@ export function useNango() {
             }
           },
         });
-
-        // 3. Fetch session token from backend
-        console.log('🔑 Fetching session token...');
-        const sessionToken = await getSessionToken(providerConfigKey);
-        
-        // 4. Set session token (UI จะเปลี่ยนจาก loading เป็นพร้อมใช้งาน)
-        console.log('✅ Setting session token to Connect UI');
-        connectUI.setSessionToken(sessionToken);
 
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
