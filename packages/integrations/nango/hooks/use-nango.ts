@@ -12,11 +12,6 @@ interface NangoAuthOptions {
   params?: Record<string, string>;
 }
 
-interface NangoSessionResponse {
-  token: string;
-  expiresAt: string;
-}
-
 export function useNango() {
   const { user } = useUser();
   const [isConnecting, setIsConnecting] = useState(false);
@@ -36,9 +31,7 @@ export function useNango() {
       const response = await fetch('/api/nango/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          providerConfigKey,
-        }),
+        body: JSON.stringify({ providerConfigKey }),
       });
 
       if (!response.ok) {
@@ -49,8 +42,6 @@ export function useNango() {
 
       const data = await response.json();
       console.log('✅ Session response received:', data);
-      console.log('🔍 Token exists:', !!data.token);
-      console.log('🔍 Token length:', data.token?.length);
       
       if (!data.token) {
         console.error('❌ No token in response:', data);
@@ -64,10 +55,10 @@ export function useNango() {
 
   /**
    * Connect to an integration using Nango Connect UI
-   * https://docs.nango.dev/integrate/guides/authorize-an-api
+   * ตามเอกสาร: https://docs.nango.dev/guides/getting-started/authorize-an-api-from-your-app
    */
   const connect = useCallback(
-    async ({ providerConfigKey, connectionId, params }: NangoAuthOptions) => {
+    async ({ providerConfigKey }: NangoAuthOptions) => {
       setIsConnecting(true);
       setError(null);
 
@@ -78,67 +69,21 @@ export function useNango() {
           source: 'dashboard',
         });
 
-        // Dynamically import Nango SDK (client-side only)
+        // Dynamically import Nango SDK
         const { default: Nango } = await import('@nangohq/frontend');
 
         console.log('🚀 Initializing Nango...');
         
-        // Get session token first
-        console.log('🔑 Fetching session token...');
-        const sessionToken = await getSessionToken(providerConfigKey);
-        console.log('✅ Token received, length:', sessionToken?.length);
-        console.log('🔍 Token preview:', sessionToken?.substring(0, 30) + '...');
-        console.log('🔍 Token full (for debug):', sessionToken);
-        
-        // 🔍 Decode token to see what's inside (DEBUG)
-        console.log('🔍 Decoding session token info...');
-        console.log('🔍 Token parts count:', sessionToken.split('.').length);
-        
-        try {
-          // Session token เป็น JWT - ลอง decode ดู (ส่วน payload)
-          const parts = sessionToken.split('.');
-          console.log('🔍 Token has', parts.length, 'parts (JWT needs 3)');
-          
-          if (parts.length === 3) {
-            console.log('🔍 Attempting to decode part 2 (payload)...');
-            const base64Payload = parts[1];
-            console.log('🔍 Base64 payload length:', base64Payload.length);
-            
-            // Add padding if needed
-            const paddedPayload = base64Payload + '='.repeat((4 - base64Payload.length % 4) % 4);
-            const decodedPayload = atob(paddedPayload);
-            console.log('🔍 Decoded payload string:', decodedPayload);
-            
-            const payload = JSON.parse(decodedPayload);
-            console.log('📦 Token payload:', payload);
-            console.log('📦 Allowed integrations:', payload.allowed_integrations);
-            console.log('📦 End user:', payload.end_user);
-          } else {
-            console.warn('⚠️ Token is not JWT format (not 3 parts)');
-            console.log('⚠️ This might be a session token ID, not a JWT');
-          }
-        } catch (e) {
-          console.error('⚠️ Could not decode token:', e);
-          console.error('⚠️ Error details:', e instanceof Error ? e.message : 'Unknown');
-        }
-
-        // Initialize Nango with session token
-        console.log('🔐 Creating Nango instance with token...');
-        const nango = new Nango({ connectSessionToken: sessionToken });
+        // ✅ ตามเอกสาร: ไม่ต้องส่ง parameter
+        const nango = new Nango();
         
         console.log('✅ Nango instance created');
-        console.log('🔍 Nango instance type:', typeof nango);
-        console.log('🔍 Nango methods:', Object.keys(nango));
-        
-        // Open Connect UI
         console.log('🎨 Opening Connect UI...');
-        console.log('🔍 Target integration:', providerConfigKey);
         
-        nango.openConnectUI({
+        // ✅ เปิด UI ก่อน
+        const connectUI = nango.openConnectUI({
           onEvent: (event: any) => {
             console.log('📡 Nango event:', event);
-            console.log('📡 Event type:', event.type);
-            console.log('📡 Event payload:', event.payload);
 
             if (event.type === 'connect') {
               console.log('✅ Connection successful!', event.payload);
@@ -152,9 +97,12 @@ export function useNango() {
 
               setIsConnecting(false);
               
-              // Trigger refresh of connections list
+              // Trigger refresh
               window.dispatchEvent(new CustomEvent('nango:connected', {
-                detail: { integration: providerConfigKey }
+                detail: { 
+                  integration: providerConfigKey,
+                  connectionId: event.payload?.connectionId
+                }
               }));
               
             } else if (event.type === 'error') {
@@ -177,15 +125,26 @@ export function useNango() {
             }
           },
         });
+
+        console.log('✅ Connect UI opened');
+        console.log('🔑 Fetching session token...');
         
-        console.log('✅ Connect UI opened successfully');
+        // ✅ ดึง token ทีหลัง
+        const sessionToken = await getSessionToken(providerConfigKey);
+        
+        console.log('✅ Token received, length:', sessionToken.length);
+        console.log('🔐 Setting session token...');
+        
+        // ✅ ตั้ง token ทีหลัง (ตามเอกสาร!)
+        connectUI.setSessionToken(sessionToken);
+        
+        console.log('✅ Session token set - UI should show integrations now!');
 
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
         setError(message);
 
         console.error('💥 Connection error:', err);
-        console.error('💥 Error stack:', err instanceof Error ? err.stack : 'No stack');
 
         toast.error('Connection error', message);
 
@@ -202,7 +161,7 @@ export function useNango() {
   );
 
   /**
-   * Check if Nango is available (SDK loaded)
+   * Check if Nango is available
    */
   const isAvailable = useCallback(async () => {
     try {
