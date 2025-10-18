@@ -142,6 +142,20 @@ export function useNango() {
         console.log('✅ Token received, length:', sessionToken?.length);
         console.log('🔍 Token preview:', sessionToken?.substring(0, 20) + '...');
         
+        // 🔍 Decode token to see what's inside (DEBUG)
+        console.log('🔍 Decoding session token info...');
+        try {
+          // Session token เป็น JWT - ลอง decode ดู (ส่วน payload)
+          const parts = sessionToken.split('.');
+          if (parts.length === 3) {
+            const payload = JSON.parse(atob(parts[1]));
+            console.log('📦 Token payload:', payload);
+            console.log('📦 Allowed integrations:', payload.allowed_integrations);
+          }
+        } catch (e) {
+          console.log('⚠️ Could not decode token:', e);
+        }
+        
         // Set session token after UI is opened
         console.log('🔐 Setting session token...');
         connectUI.setSessionToken(sessionToken);
