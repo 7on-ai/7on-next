@@ -82,9 +82,29 @@ export function useNango() {
         const { default: Nango } = await import('@nangohq/frontend');
 
         console.log('🚀 Initializing Nango...');
+        
+        // Get session token first
+        console.log('🔑 Fetching session token...');
+        const sessionToken = await getSessionToken(providerConfigKey);
+        console.log('✅ Token received, length:', sessionToken?.length);
+        console.log('🔍 Token preview:', sessionToken?.substring(0, 20) + '...');
+        
+        // 🔍 Decode token to see what's inside (DEBUG)
+        console.log('🔍 Decoding session token info...');
+        try {
+          // Session token เป็น JWT - ลอง decode ดู (ส่วน payload)
+          const parts = sessionToken.split('.');
+          if (parts.length === 3) {
+            const payload = JSON.parse(atob(parts[1]));
+            console.log('📦 Token payload:', payload);
+            console.log('📦 Allowed integrations:', payload.allowed_integrations);
+          }
+        } catch (e) {
+          console.log('⚠️ Could not decode token:', e);
+        }
 
-        // Initialize Nango without session token first
-        const nango = new Nango();
+        // Initialize Nango with session token
+        const nango = new Nango({ connectSessionToken: sessionToken });
         
         console.log('✅ Nango instance created');
         
@@ -92,7 +112,7 @@ export function useNango() {
         console.log('🎨 Opening Connect UI...');
         console.log('🔍 Target integration:', providerConfigKey);
         
-        const connectUI = nango.openConnectUI({
+        nango.openConnectUI({
           onEvent: (event: any) => {
             console.log('📡 Nango event:', event);
             console.log('📡 Event type:', event.type);
@@ -135,31 +155,6 @@ export function useNango() {
             }
           },
         });
-
-        // Get session token and set it asynchronously (recommended by Nango)
-        console.log('🔑 Fetching session token...');
-        const sessionToken = await getSessionToken(providerConfigKey);
-        console.log('✅ Token received, length:', sessionToken?.length);
-        console.log('🔍 Token preview:', sessionToken?.substring(0, 20) + '...');
-        
-        // 🔍 Decode token to see what's inside (DEBUG)
-        console.log('🔍 Decoding session token info...');
-        try {
-          // Session token เป็น JWT - ลอง decode ดู (ส่วน payload)
-          const parts = sessionToken.split('.');
-          if (parts.length === 3) {
-            const payload = JSON.parse(atob(parts[1]));
-            console.log('📦 Token payload:', payload);
-            console.log('📦 Allowed integrations:', payload.allowed_integrations);
-          }
-        } catch (e) {
-          console.log('⚠️ Could not decode token:', e);
-        }
-        
-        // Set session token after UI is opened
-        console.log('🔐 Setting session token...');
-        connectUI.setSessionToken(sessionToken);
-        console.log('✅ Session token set successfully');
 
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
