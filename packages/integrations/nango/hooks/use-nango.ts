@@ -90,9 +90,13 @@ export function useNango() {
         
         // Open Connect UI
         console.log('🎨 Opening Connect UI...');
+        console.log('🔍 Target integration:', providerConfigKey);
+        
         const connectUI = nango.openConnectUI({
           onEvent: (event: any) => {
             console.log('📡 Nango event:', event);
+            console.log('📡 Event type:', event.type);
+            console.log('📡 Event payload:', event.payload);
 
             if (event.type === 'connect') {
               console.log('✅ Connection successful!', event.payload);
