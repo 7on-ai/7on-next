@@ -64,7 +64,7 @@ export function useNango() {
 
   /**
    * Connect to an integration using Nango Connect UI
-   * ตามเอกสาร: https://docs.nango.dev/integrate/guides/authorize-an-api
+   * https://docs.nango.dev/integrate/guides/authorize-an-api
    */
   const connect = useCallback(
     async ({ providerConfigKey, connectionId, params }: NangoAuthOptions) => {
@@ -89,21 +89,26 @@ export function useNango() {
 
         console.log('🚀 Initializing Nango with session token...');
 
-        // ✅ CRITICAL: Pass session token in constructor
+        // ✅ Pass session token in constructor
         const nango = new Nango({ 
           connectSessionToken: sessionToken 
         });
         
         console.log('✅ Nango instance created');
         
-        // 2. Open Connect UI (ไม่ต้อง setSessionToken ทีหลัง)
-        console.log('🎨 Opening Connect UI...');
+        // ✅ CRITICAL FIX: Specify which integration to connect
+        console.log('🎨 Opening Connect UI for:', providerConfigKey);
         nango.openConnectUI({
+          // ✅ Specify the integration to show
+          integrationId: providerConfigKey,
+          
           onEvent: (event: any) => {
             console.log('📡 Nango event:', event);
 
             if (event.type === 'connect') {
-              toast.success('Connection successful', `Successfully connected to ${providerConfigKey}`);
+              console.log('✅ Connection successful!', event.payload);
+              
+              toast.success('Connected', `Successfully connected to ${providerConfigKey}`);
 
               analytics.capture('Integration Connected', {
                 integration: providerConfigKey,
@@ -111,10 +116,17 @@ export function useNango() {
               });
 
               setIsConnecting(false);
+              
+              // Trigger refresh of connections list
+              window.dispatchEvent(new CustomEvent('nango:connected', {
+                detail: { integration: providerConfigKey }
+              }));
+              
             } else if (event.type === 'error') {
               const errorMessage = event.payload?.error || 'Connection failed';
+              console.error('❌ Connection error:', errorMessage);
+              
               setError(errorMessage);
-
               toast.error('Connection failed', errorMessage);
 
               analytics.capture('Integration Connection Failed', {
@@ -123,6 +135,7 @@ export function useNango() {
               });
 
               setIsConnecting(false);
+              
             } else if (event.type === 'close') {
               console.log('🔒 Connect UI closed');
               setIsConnecting(false);
