@@ -81,27 +81,16 @@ export function useNango() {
         // Dynamically import Nango SDK (client-side only)
         const { default: Nango } = await import('@nangohq/frontend');
 
-        // Get session token from backend FIRST
-        console.log('🔑 Fetching session token...');
-        const sessionToken = await getSessionToken(providerConfigKey);
-        console.log('✅ Token received, length:', sessionToken?.length);
-        console.log('🔍 Token preview:', sessionToken?.substring(0, 20) + '...');
+        console.log('🚀 Initializing Nango...');
 
-        console.log('🚀 Initializing Nango with session token...');
-
-        // ✅ Pass session token in constructor
-        const nango = new Nango({ 
-          connectSessionToken: sessionToken 
-        });
+        // Initialize Nango without session token first
+        const nango = new Nango();
         
         console.log('✅ Nango instance created');
         
-        // ✅ CRITICAL FIX: Specify which integration to connect
-        console.log('🎨 Opening Connect UI for:', providerConfigKey);
-        nango.openConnectUI({
-          // ✅ Specify the integration to show
-          integrationId: providerConfigKey,
-          
+        // Open Connect UI
+        console.log('🎨 Opening Connect UI...');
+        const connectUI = nango.openConnectUI({
           onEvent: (event: any) => {
             console.log('📡 Nango event:', event);
 
@@ -142,6 +131,17 @@ export function useNango() {
             }
           },
         });
+
+        // Get session token and set it asynchronously (recommended by Nango)
+        console.log('🔑 Fetching session token...');
+        const sessionToken = await getSessionToken(providerConfigKey);
+        console.log('✅ Token received, length:', sessionToken?.length);
+        console.log('🔍 Token preview:', sessionToken?.substring(0, 20) + '...');
+        
+        // Set session token after UI is opened
+        console.log('🔐 Setting session token...');
+        connectUI.setSessionToken(sessionToken);
+        console.log('✅ Session token set successfully');
 
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
