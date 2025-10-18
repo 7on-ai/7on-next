@@ -6,172 +6,63 @@ interface SessionTokenRequest {
   providerConfigKey: string;
 }
 
-interface NangoSessionResponse {
-  data: {
-    token: string;
-    expires_at?: string;
-  };
-}
-
 export async function POST(request: Request) {
   try {
     const { userId } = await auth();
 
     if (!userId) {
-      log.error('No userId in auth');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = (await request.json()) as SessionTokenRequest;
-    const { providerConfigKey } = body;
-
-    log.info('📥 Session request received', { 
-      providerConfigKey, 
-      userId,
-    });
-
+    const { providerConfigKey } = (await request.json()) as SessionTokenRequest;
     if (!providerConfigKey) {
-      log.error('❌ Missing providerConfigKey');
-      return NextResponse.json(
-        { error: 'providerConfigKey is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'providerConfigKey is required' }, { status: 400 });
     }
 
     const nangoSecretKey = process.env.NANGO_SECRET_KEY;
     if (!nangoSecretKey) {
-      log.error('❌ NANGO_SECRET_KEY not configured');
-      return NextResponse.json(
-        { error: 'Nango not configured' },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: 'Nango secret key missing' }, { status: 500 });
     }
 
-    // ✅ FIXED: Correct request body according to Nango API docs
-    // https://docs.nango.dev/reference/api/connect-sessions/post
     const requestBody = {
-      end_user: {
-        id: userId,
-        // ✅ No organization_id here! It was causing 400 Bad Request
-      },
+      app_id: process.env.NANGO_APP_ID, // ✅ ตามเอกสารใหม่ (optional แต่แนะนำ)
+      end_user: { id: userId },
       allowed_integrations: [providerConfigKey],
     };
 
-    log.info('🔄 Calling Nango Connect Sessions API', { 
-      endpoint: 'https://api.nango.dev/connect/sessions',
-      providerConfigKey,
-      userId,
-    });
-
-    const nangoResponse = await fetch(
-      'https://api.nango.dev/connect/sessions',
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${nangoSecretKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      }
-    );
-
-    // Get response as text first for better error handling
-    const responseText = await nangoResponse.text();
-    
-    log.info('📡 Nango API response', { 
-      status: nangoResponse.status,
-      statusText: nangoResponse.statusText,
-      contentType: nangoResponse.headers.get('content-type'),
-      bodyLength: responseText.length,
-      bodyPreview: responseText.substring(0, 200),
-    });
-
-    // Handle non-OK responses
-    if (!nangoResponse.ok) {
-      let errorData: any;
-      try {
-        errorData = JSON.parse(responseText);
-      } catch {
-        errorData = { message: responseText };
-      }
-      
-      log.error('❌ Nango API error', { 
-        status: nangoResponse.status,
-        statusText: nangoResponse.statusText,
-        error: errorData,
-        requestBody,
-      });
-      
-      return NextResponse.json(
-        { 
-          error: errorData.error || errorData.message || 'Failed to create session',
-          details: errorData,
-        },
-        { status: nangoResponse.status }
-      );
-    }
-
-    // Parse successful response
-    let sessionData: NangoSessionResponse;
-    try {
-      sessionData = JSON.parse(responseText);
-    } catch (parseError) {
-      log.error('❌ Failed to parse Nango response', { 
-        responseText,
-        parseError: parseError instanceof Error ? parseError.message : 'Unknown',
-      });
-      return NextResponse.json(
-        { error: 'Invalid response from Nango API' },
-        { status: 500 }
-      );
-    }
-
-    log.info('📦 Nango response parsed', {
-      hasToken: !!sessionData.data?.token,
-      tokenLength: sessionData.data?.token?.length,
-      tokenPrefix: sessionData.data?.token?.substring(0, 20),
-      expiresAt: sessionData.data?.expires_at,
-    });
-
-    // Validate token exists
-    if (!sessionData.data?.token) {
-      log.error('❌ No token in Nango response', { 
-        sessionData,
-        responseKeys: Object.keys(sessionData),
-      });
-      return NextResponse.json(
-        { 
-          error: 'No token in Nango response',
-          receivedKeys: Object.keys(sessionData),
-        },
-        { status: 500 }
-      );
-    }
-
-    log.info('✅ Session token created successfully', {
-      userId,
-      providerConfigKey,
-      tokenLength: sessionData.data.token.length,
-    });
-
-    return NextResponse.json({
-      token: sessionData.data.token,
-      expiresAt: sessionData.data.expires_at,
-    });
-    
-  } catch (error) {
-    log.error('💥 Unexpected error in session endpoint', { 
-      error,
-      message: error instanceof Error ? error.message : 'Unknown',
-      stack: error instanceof Error ? error.stack : undefined,
-    });
-    
-    return NextResponse.json(
-      { 
-        error: 'Internal server error',
-        message: error instanceof Error ? error.message : 'Unknown error',
+    const nangoResponse = await fetch('https://api.nango.dev/connect/sessions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${nangoSecretKey}`,
+        'Content-Type': 'application/json',
       },
-      { status: 500 }
-    );
+      body: JSON.stringify(requestBody),
+    });
+
+    const text = await nangoResponse.text();
+
+    if (!nangoResponse.ok) {
+      let err;
+      try {
+        err = JSON.parse(text);
+      } catch {
+        err = { message: text };
+      }
+      log.error('❌ Nango API error', { status: nangoResponse.status, err });
+      return NextResponse.json({ error: err.error || err.message || 'Nango error' }, { status: nangoResponse.status });
+    }
+
+    const parsed = JSON.parse(text);
+    const token = parsed?.data?.token || parsed?.session?.token;
+    const expiresAt = parsed?.data?.expires_at || parsed?.session?.expires_at;
+
+    if (!token) {
+      return NextResponse.json({ error: 'No session token in response', parsed }, { status: 500 });
+    }
+
+    return NextResponse.json({ token, expiresAt });
+  } catch (error) {
+    log.error('💥 Unexpected error', { error });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

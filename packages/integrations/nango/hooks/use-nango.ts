@@ -17,142 +17,85 @@ export function useNango() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  /**
-   * Get Nango Connect Session Token from backend
-   */
   const getSessionToken = useCallback(
     async (providerConfigKey: string): Promise<string> => {
-      if (!user?.id) {
-        throw new Error('User not authenticated');
-      }
+      if (!user?.id) throw new Error('User not authenticated');
 
-      console.log('🔍 Requesting session token for:', providerConfigKey);
-
-      const response = await fetch('/api/nango/session', {
+      const res = await fetch('/api/nango/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ providerConfigKey }),
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        console.error('❌ Session token error:', error);
-        throw new Error(error.error || 'Failed to create session token');
-      }
+      const data = await res.json();
+      if (!res.ok || !data?.token) throw new Error('Failed to create session token');
 
-      const data = await response.json();
-      console.log('✅ Session response received:', data);
-      
-      if (!data.token) {
-        console.error('❌ No token in response:', data);
-        throw new Error('Session token not found in response');
-      }
-      
+      console.log('✅ Session token:', data.token);
       return data.token;
     },
     [user]
   );
 
-  /**
-   * Connect to an integration using Nango Connect UI
-   * ตามเอกสาร: https://docs.nango.dev/guides/getting-started/authorize-an-api-from-your-app
-   */
   const connect = useCallback(
     async ({ providerConfigKey }: NangoAuthOptions) => {
       setIsConnecting(true);
       setError(null);
 
       try {
-        // Track analytics
         analytics.capture('Integration Connection Initiated', {
           integration: providerConfigKey,
           source: 'dashboard',
         });
 
-        // Dynamically import Nango SDK
         const { default: Nango } = await import('@nangohq/frontend');
+        const nango = new Nango(); // ✅ ไม่มี public_key แล้ว
 
-        console.log('🚀 Initializing Nango...');
-        
-        // ✅ ตามเอกสาร: ไม่ต้องส่ง parameter
-        const nango = new Nango();
-        
-        console.log('✅ Nango instance created');
-        console.log('🎨 Opening Connect UI...');
-        
-        // ✅ เปิด UI ก่อน
         const connectUI = nango.openConnectUI({
           onEvent: (event: any) => {
             console.log('📡 Nango event:', event);
 
             if (event.type === 'connect') {
-              console.log('✅ Connection successful!', event.payload);
-              
-              toast.success('Connected', `Successfully connected to ${providerConfigKey}`);
-
+              toast.success('Connected', `Connected to ${providerConfigKey}`);
               analytics.capture('Integration Connected', {
                 integration: providerConfigKey,
                 connectionId: event.payload?.connectionId,
               });
-
+              window.dispatchEvent(
+                new CustomEvent('nango:connected', {
+                  detail: {
+                    integration: providerConfigKey,
+                    connectionId: event.payload?.connectionId,
+                  },
+                })
+              );
               setIsConnecting(false);
-              
-              // Trigger refresh
-              window.dispatchEvent(new CustomEvent('nango:connected', {
-                detail: { 
-                  integration: providerConfigKey,
-                  connectionId: event.payload?.connectionId
-                }
-              }));
-              
             } else if (event.type === 'error') {
-              const errorMessage = event.payload?.error || 'Connection failed';
-              console.error('❌ Connection error:', errorMessage);
-              
-              setError(errorMessage);
-              toast.error('Connection failed', errorMessage);
-
+              const message = event.payload?.error || 'Connection failed';
+              setError(message);
+              toast.error('Connection failed', message);
               analytics.capture('Integration Connection Failed', {
                 integration: providerConfigKey,
-                error: errorMessage,
+                error: message,
               });
-
               setIsConnecting(false);
-              
             } else if (event.type === 'close') {
-              console.log('🔒 Connect UI closed');
               setIsConnecting(false);
             }
           },
         });
 
-        console.log('✅ Connect UI opened');
-        console.log('🔑 Fetching session token...');
-        
-        // ✅ ดึง token ทีหลัง
+        // 🔑 ดึง session token จาก backend
         const sessionToken = await getSessionToken(providerConfigKey);
-        
-        console.log('✅ Token received, length:', sessionToken.length);
-        console.log('🔐 Setting session token...');
-        
-        // ✅ ตั้ง token ทีหลัง (ตามเอกสาร!)
-        connectUI.setSessionToken(sessionToken);
-        
-        console.log('✅ Session token set - UI should show integrations now!');
+        connectUI.setSessionToken(sessionToken); // ต้องเป็น JWT ไม่ใช่ session ID
 
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Unknown error';
-        setError(message);
-
-        console.error('💥 Connection error:', err);
-
-        toast.error('Connection error', message);
-
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        setError(msg);
+        toast.error('Connection error', msg);
         analytics.capture('Integration Connection Failed', {
           integration: providerConfigKey,
-          error: message,
+          error: msg,
         });
-
         setIsConnecting(false);
         throw err;
       }
@@ -160,9 +103,6 @@ export function useNango() {
     [getSessionToken]
   );
 
-  /**
-   * Check if Nango is available
-   */
   const isAvailable = useCallback(async () => {
     try {
       await import('@nangohq/frontend');
@@ -172,10 +112,5 @@ export function useNango() {
     }
   }, []);
 
-  return {
-    connect,
-    isConnecting,
-    error,
-    isAvailable,
-  };
+  return { connect, isConnecting, error, isAvailable };
 }
