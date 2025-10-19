@@ -4,8 +4,8 @@ import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { GithubIcon, Linkedin } from "lucide-react";
 import { Button } from "@repo/design-system/components/ui/button";
-import { Icons } from "@repo/design-system/components/ui/icons";
 import { Card, CardContent, CardHeader, CardTitle } from "@repo/design-system/components/ui/card";
+import { Loader2 } from "lucide-react";
 
 // ===== CONSTANTS & CONFIGURATION =====
 const CLIENT_IDS = {
@@ -321,7 +321,7 @@ function ServiceButton({ service, label, icon, userId }: ServiceButtonProps) {
       className="flex items-center justify-center gap-2 text-sm font-bold h-full w-full px-0 py-0 border border-gray-200 rounded-lg hover:border-gray-300"
       variant="ghost"
     >
-      {isConnecting ? <Icons.loader className="h-4 w-4" /> : icon}
+      {isConnecting ? <Loader2 className="h-4 w-4 animate-spin" /> : icon}
       {isConnecting ? "Connecting..." : `Connect ${label}`}
     </Button>
   );
