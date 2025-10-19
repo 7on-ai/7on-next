@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { Icons } from "@/components/ui/icons";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { GithubIcon, Linkedin } from "lucide-react";
+import { Button } from "@repo/design-system/components/ui/button";
+import { Icons } from "@repo/design-system/components/ui/icons";
+import { Card, CardContent, CardHeader, CardTitle } from "@repo/design-system/components/ui/card";
 
 // ===== CONSTANTS & CONFIGURATION =====
 const CLIENT_IDS = {
