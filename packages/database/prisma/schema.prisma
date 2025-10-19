@@ -20,11 +20,26 @@ model User {
   apiCallsCount    Int              @default(0)
   usageResetAt     DateTime         @default(now())
 
-  subscriptions    Subscription[]
-  usageLogs        UsageLog[]
-  nangoConnections NangoConnection[]
-  apiUsage         ApiUsage[]
-  usageSummaries   UsageSummary[]
+  // ===== NEW: N8N & Northflank Fields =====
+  n8nUrl                   String?
+  n8nUserEmail             String?
+  n8nEncryptionKey         String?
+  n8nApiKey                String?
+  northflankProjectId      String?
+  northflankProjectName    String?
+  northflankProjectStatus  String?
+  northflankSecretData     Json?
+  northflankWorkflowId     String?
+  northflankCreatedAt      DateTime?
+  templateCompletedAt      DateTime?
+  n8nSetupError            String?
+
+  subscriptions       Subscription[]
+  usageLogs           UsageLog[]
+  nangoConnections    NangoConnection[]
+  apiUsage            ApiUsage[]
+  usageSummaries      UsageSummary[]
+  socialCredentials   SocialCredential[] // NEW relation
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -32,6 +47,38 @@ model User {
   @@index([clerkId])
   @@index([stripeCustomerId])
   @@index([email])
+  @@index([northflankProjectId])
+}
+
+// ===== NEW: Social Credentials Table =====
+model SocialCredential {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  provider         String
+  providerUserId   String?
+  accessToken      String?
+  refreshToken     String?
+  tokenType        String  @default("Bearer")
+  expiresAt        DateTime?
+  clientId         String?
+  clientSecret     String?
+  tokenSource      String?
+
+  injectedToN8n      Boolean   @default(false)
+  injectedAt         DateTime?
+  n8nCredentialIds   Json?
+  injectionError     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, provider, tokenSource])
+  @@index([userId])
+  @@index([provider])
+  @@index([userId, injectedToN8n])
 }
 
 model Subscription {
