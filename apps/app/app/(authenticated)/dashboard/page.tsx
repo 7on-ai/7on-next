@@ -38,7 +38,7 @@ export default async function DashboardPage() {
 
         {/* Content */}
         <div className="relative z-10 flex flex-1 flex-col gap-6 p-6">
-          <DashboardClient userId={userId} userEmail={userEmail} />
+          <DashboardClient userId={userId} userEmail={userEmail} initialTier="free" />
         </div>
       </div>
     </>
