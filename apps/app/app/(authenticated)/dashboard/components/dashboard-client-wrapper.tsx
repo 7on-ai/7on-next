@@ -251,30 +251,35 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
             </div>
           </div>
 
-          {/* Available Integrations Section */}
-          <div className="w-full p-8 rounded-3xl bg-white/95 backdrop-blur-xl border border-white/40 shadow-2xl">
-            <h3 className="text-xl font-bold text-gray-900 mb-6">Available Integrations</h3>
-            <div className="space-y-2">
-              {availableServices.map(({ service, label, icon }) => (
-                <div
-                  key={service}
-                  onClick={() => {
-                    handleConnect(service, false);
-                    showToast(`Connecting to ${label}...`);
-                  }}
-                  className="flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-300 ease-out cursor-pointer hover:bg-white/50 hover:scale-[1.02] hover:shadow-lg active:scale-[0.98] border border-gray-200/50"
-                >
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg">
-                    {icon}
-                  </div>
-                  <span className="text-gray-900 font-medium text-sm flex-1">Connect {label}</span>
-                  <svg className="h-4 w-4 text-gray-400 transition-transform duration-200 group-hover:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </div>
-              ))}
-            </div>
-          </div>
+{/* Available Integrations Section (Glassmorphic Style เหมือนด้านล่างเป๊ะ) */}
+<div className="w-80 p-6 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-xl">
+  <h3 className="text-white text-xl font-bold mb-6">Available Integrations</h3>
+  <div className="space-y-2">
+    {availableServices.map(({ service, label, icon }) => (
+      <div
+        key={service}
+        onClick={() => {
+          handleConnect(service, false)
+          showToast(`Connecting to ${label}...`)
+        }}
+        className="flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-300 ease-out cursor-pointer hover:bg-white/15 hover:scale-[1.02] hover:shadow-lg active:scale-[0.98] border border-white/20"
+      >
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg">
+          {icon}
+        </div>
+        <span className="text-white font-medium text-sm flex-1">Connect {label}</span>
+        <svg
+          className="h-4 w-4 text-white/70 transition-transform duration-200 hover:scale-110"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+      </div>
+    ))}
+  </div>
+</div>
 
           {/* Locked Integrations Section */}
           {lockedServices.length > 0 && (
