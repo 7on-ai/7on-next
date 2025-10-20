@@ -254,7 +254,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
           {/* Available Integrations Section */}
           <div className="w-full p-8 rounded-3xl bg-white/95 backdrop-blur-xl border border-white/40 shadow-2xl">
             <h3 className="text-xl font-bold text-gray-900 mb-6">Available Integrations</h3>
-            <div className="space-y-3">
+            <div className="space-y-2">
               {availableServices.map(({ service, label, icon }) => (
                 <div
                   key={service}
@@ -262,13 +262,13 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
                     handleConnect(service, false);
                     showToast(`Connecting to ${label}...`);
                   }}
-                  className="flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-300 ease-out cursor-pointer bg-gradient-to-r from-gray-50 to-gray-100 hover:from-gray-100 hover:to-gray-200 border border-gray-200 hover:border-gray-300 hover:shadow-lg active:scale-[0.98]"
+                  className="flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-300 ease-out cursor-pointer hover:bg-white/50 hover:scale-[1.02] hover:shadow-lg active:scale-[0.98] border border-gray-200/50"
                 >
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-sm">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg">
                     {icon}
                   </div>
-                  <span className="text-gray-900 font-semibold text-base flex-1">Connect {label}</span>
-                  <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <span className="text-gray-900 font-medium text-sm flex-1">Connect {label}</span>
+                  <svg className="h-4 w-4 text-gray-400 transition-transform duration-200 group-hover:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
                 </div>
