@@ -116,19 +116,9 @@ interface DashboardClientProps {
   initialTier: SubscriptionTier;
 }
 
-interface SocialCredential {
-  id: string;
-  provider: string;
-  injectedToN8n: boolean;
-  injectedAt?: Date;
-  injectionError?: string;
-  createdAt: Date;
-}
-
 export function DashboardClientWrapper({ userId, userEmail, initialTier }: DashboardClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [speed] = useState(1.0);
   const [toast, setToast] = useState<Toast | null>(null);
   const { tier, isFree } = useSubscription() ?? { tier: initialTier, isFree: initialTier === 'FREE' };
   const [stats, setStats] = useState({ activeConnections: 0 });
@@ -212,130 +202,129 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
   };
 
   return (
-    <div className="w-full h-screen bg-black relative overflow-hidden">
-      {/* Shader Background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-black via-gray-900 to-black">
-        <div
-          className="absolute top-1/4 left-1/3 w-32 h-32 bg-gray-800/5 rounded-full blur-3xl animate-pulse"
-          style={{ animationDuration: `${3 / speed}s` }}
-        />
-        <div
-          className="absolute bottom-1/3 right-1/4 w-24 h-24 bg-white/2 rounded-full blur-2xl animate-pulse"
-          style={{ animationDuration: `${2 / speed}s`, animationDelay: "1s" }}
-        />
-        <div
-          className="absolute top-1/2 right-1/3 w-20 h-20 bg-gray-900/3 rounded-full blur-xl animate-pulse"
-          style={{ animationDuration: `${4 / speed}s`, animationDelay: "0.5s" }}
-        />
-      </div>
+    <div className="w-full min-h-screen relative overflow-hidden">
+      {/* Background Image */}
+      <div 
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+        style={{
+          backgroundImage: 'url(/background.jpeg)',
+          filter: 'blur(0px)',
+        }}
+      />
+      
+      {/* Overlay for better readability */}
+      <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/40" />
 
-      {/* Main Content Container */}
-      <div className="absolute inset-0 flex items-center justify-center p-6 overflow-y-auto">
-        <div className="w-full max-w-6xl space-y-6">
-          {/* Stats Cards */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {/* Active Connections Card */}
-            <div className="p-6 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-xl">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-medium text-white/80">Active Connections</h3>
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" className="h-4 w-4 text-white/60">
-                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                  <circle cx="9" cy="7" r="4" />
-                  <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
-                </svg>
-              </div>
-              <div className="text-3xl font-bold text-white">{stats.activeConnections}</div>
+      {/* Main Content Container - Centered */}
+      <div className="relative z-10 flex items-center justify-center min-h-screen p-6">
+        <div className="w-full max-w-xl space-y-6">
+          
+          {/* Active Connections Card */}
+          <div className="w-full p-8 rounded-3xl bg-white/95 backdrop-blur-xl border border-white/40 shadow-2xl">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-semibold text-gray-800">Active Connections</h3>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" className="h-5 w-5 text-gray-500">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+              </svg>
             </div>
-
-            {/* Current Plan Card */}
-            <div className="p-6 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-xl">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-medium text-white/80">Current Plan</h3>
-                <SparklesIcon className="h-4 w-4 text-white/60" />
-              </div>
-              <div className="text-3xl font-bold text-white">{currentTier}</div>
-            </div>
-
-            {/* Upgrade Button */}
-            {isFree && (
-              <div className="p-6 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-xl flex items-center justify-center">
-                <Button asChild className="w-full bg-white/20 hover:bg-white/30 text-white border-white/30">
-                  <Link href="/pricing" className="flex items-center gap-2">
-                    <SparklesIcon className="h-4 w-4" />
-                    Upgrade Plan
-                  </Link>
-                </Button>
-              </div>
-            )}
+            <div className="text-5xl font-bold text-gray-900">{stats.activeConnections}</div>
           </div>
 
-          {/* Integrations Section */}
-          <div className="space-y-4">
-            {/* Available Services */}
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-4">Available Integrations</h3>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {availableServices.map(({ service, label, icon }) => (
+          {/* Current Plan Card */}
+          <div className="w-full p-8 rounded-3xl bg-white/95 backdrop-blur-xl border border-white/40 shadow-2xl">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-semibold text-gray-800">Current Plan</h3>
+              <SparklesIcon className="h-5 w-5 text-gray-500" />
+            </div>
+            <div className="flex items-baseline justify-between">
+              <div className="text-5xl font-bold text-gray-900">{currentTier}</div>
+              {isFree && (
+                <Button asChild size="sm" className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white">
+                  <Link href="/pricing" className="flex items-center gap-2">
+                    <SparklesIcon className="h-4 w-4" />
+                    Upgrade
+                  </Link>
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Available Integrations Section */}
+          <div className="w-full p-8 rounded-3xl bg-white/95 backdrop-blur-xl border border-white/40 shadow-2xl">
+            <h3 className="text-xl font-bold text-gray-900 mb-6">Available Integrations</h3>
+            <div className="space-y-3">
+              {availableServices.map(({ service, label, icon }) => (
+                <div
+                  key={service}
+                  onClick={() => {
+                    handleConnect(service, false);
+                    showToast(`Connecting to ${label}...`);
+                  }}
+                  className="flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-300 ease-out cursor-pointer bg-gradient-to-r from-gray-50 to-gray-100 hover:from-gray-100 hover:to-gray-200 border border-gray-200 hover:border-gray-300 hover:shadow-lg active:scale-[0.98]"
+                >
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-sm">
+                    {icon}
+                  </div>
+                  <span className="text-gray-900 font-semibold text-base flex-1">Connect {label}</span>
+                  <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Locked Integrations Section */}
+          {lockedServices.length > 0 && (
+            <div className="w-full p-8 rounded-3xl bg-white/90 backdrop-blur-xl border border-white/30 shadow-2xl opacity-75">
+              <h3 className="text-xl font-bold text-gray-700 mb-6">Upgrade to Unlock</h3>
+              <div className="space-y-3">
+                {lockedServices.map(({ service, label, icon }) => (
                   <div
                     key={service}
-                    className="flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-300 ease-out cursor-pointer bg-white/10 backdrop-blur-md border border-white/20 shadow-xl hover:bg-white/15 hover:scale-[1.02] hover:shadow-lg active:scale-[0.98]"
-                    onClick={() => {
-                      handleConnect(service, false);
-                      showToast(`Connecting to ${label}...`);
-                    }}
+                    className="flex items-center gap-4 px-5 py-4 rounded-2xl bg-gray-100/50 border border-gray-200 cursor-not-allowed"
                   >
-                    {icon}
-                    <span className="text-white font-medium text-sm">Connect {label}</span>
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/50">
+                      {icon}
+                    </div>
+                    <span className="text-gray-500 font-semibold text-base flex-1">{label}</span>
+                    <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
                   </div>
                 ))}
               </div>
             </div>
-
-            {/* Locked Services */}
-            {lockedServices.length > 0 && (
-              <div>
-                <h3 className="text-lg font-semibold text-white/60 mb-4">Upgrade to Unlock</h3>
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {lockedServices.map(({ service, label, icon }) => (
-                    <div
-                      key={service}
-                      className="flex items-center gap-4 px-4 py-3 rounded-xl bg-white/5 backdrop-blur-md border border-white/10 shadow-xl opacity-60 cursor-not-allowed"
-                    >
-                      {icon}
-                      <span className="text-white/60 font-medium text-sm">{label} (Locked)</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+          )}
         </div>
       </div>
 
       {/* Toast Notification */}
       {toast && (
         <div
-          className={`absolute top-8 left-1/2 -translate-x-1/2 p-4 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-xl transition-all duration-500 ease-out transform-gpu z-50 ${
+          className={`fixed top-8 left-1/2 -translate-x-1/2 p-4 rounded-2xl bg-white/95 backdrop-blur-xl border border-gray-200 shadow-2xl transition-all duration-500 ease-out transform-gpu z-50 ${
             toast.visible ? "opacity-100 translate-y-0 scale-100" : "opacity-0 -translate-y-8 scale-95"
           }`}
         >
           <div className="flex items-center gap-3">
             <div
-              className={`w-8 h-8 rounded-full bg-white/20 flex items-center justify-center transition-all duration-300 ease-out ${
+              className={`w-8 h-8 rounded-full bg-green-100 flex items-center justify-center transition-all duration-300 ease-out ${
                 toast.showIcon ? "scale-100 rotate-0" : "scale-0 rotate-180"
               }`}
             >
               <Check
-                className={`w-4 h-4 text-white transition-all duration-200 delay-100 ${
+                className={`w-4 h-4 text-green-600 transition-all duration-200 delay-100 ${
                   toast.showIcon ? "opacity-100 scale-100" : "opacity-0 scale-50"
                 }`}
               />
             </div>
-            <span className="text-white font-medium text-sm">{toast.message}</span>
+            <span className="text-gray-900 font-medium text-sm">{toast.message}</span>
           </div>
-          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white/10 rounded-b-2xl overflow-hidden">
+          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-200 rounded-b-2xl overflow-hidden">
             <div
-              className="h-full bg-white/30"
+              className="h-full bg-green-500"
               style={{
                 animation: toast.visible ? "progressBar 2.5s linear" : "none",
               }}
