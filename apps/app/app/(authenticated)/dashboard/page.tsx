@@ -1,9 +1,9 @@
-// app/(authenticated)/dashboard/page.tsx
+// apps/app/app/(authenticated)/dashboard/page.tsx
 import { auth } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
 import { getUserTier } from '@repo/auth/server';
 import type { Metadata } from 'next';
-import { DashboardClient } from './components/dashboard-client';
+import { DashboardClientWrapper } from './components/dashboard-client-wrapper';
 import { Header } from '../components/header';
 
 export const metadata: Metadata = {
@@ -25,24 +25,11 @@ export default async function DashboardPage() {
   return (
     <>
       <Header pages={['Dashboard']} page="Overview" />
-      
-      <div className="relative flex flex-1 flex-col">
-        <div className="absolute inset-0 pointer-events-none overflow-hidden">
-          <div className="absolute top-1/4 left-1/3 w-96 h-96 bg-purple-500 rounded-full mix-blend-multiply filter blur-3xl opacity-10 animate-pulse" />
-          <div 
-            className="absolute top-3/4 right-1/4 w-96 h-96 bg-cyan-500 rounded-full mix-blend-multiply filter blur-3xl opacity-10 animate-pulse" 
-            style={{ animationDelay: '1s' }} 
-          />
-        </div>
-
-        <div className="relative z-10 flex flex-1 flex-col gap-6 p-6">
-          <DashboardClient 
-            userId={userId} 
-            userEmail={userEmail} 
-            initialTier={tier} 
-          />
-        </div>
-      </div>
+      <DashboardClientWrapper 
+        userId={userId} 
+        userEmail={userEmail} 
+        initialTier={tier} 
+      />
     </>
   );
 }
