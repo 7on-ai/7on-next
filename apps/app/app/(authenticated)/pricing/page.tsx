@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { getUserTier } from '@repo/auth/server';
 import type { Metadata } from 'next';
 import { PricingCard } from './components/pricing-card';
