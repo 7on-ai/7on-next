@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { GithubIcon, Linkedin } from "lucide-react";
 import { Button } from "@repo/design-system/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@repo/design-system/components/ui/card";
-import { Loader2 } from "lucide-react";
+import { GithubIcon, Linkedin, SparklesIcon, Loader2 } from "lucide-react";
+import { useSubscription } from '@repo/auth/hooks/use-subscription';
+import type { SubscriptionTier } from '@repo/auth/client';
+import Link from 'next/link';
 
 // ===== CONSTANTS & CONFIGURATION =====
 const CLIENT_IDS = {
@@ -22,6 +24,13 @@ const BASE_SCOPES = {
   discord: "openid identify email guilds offline_access",
   github: "openid user:email repo read:user offline_access",
   linkedin: "openid r_liteprofile r_emailaddress w_member_social offline_access",
+};
+
+// Feature gating configuration
+const TIER_FEATURES = {
+  FREE: ['google', 'github'],
+  PRO: ['google', 'github', 'spotify', 'discord'],
+  BUSINESS: ['google', 'github', 'spotify', 'discord', 'linkedin'],
 };
 
 // ===== INTERFACES =====
@@ -42,16 +51,25 @@ interface SocialCredential {
   createdAt: Date;
 }
 
+interface OverviewStatsProps {
+  activeConnections: number;
+  apiCalls: number;
+  currentTier: SubscriptionTier;
+}
+
 interface ServiceButtonProps {
   service: "google" | "spotify" | "discord" | "github" | "linkedin";
   label: string;
   icon: React.ReactNode;
   userId: string | null;
+  isLocked: boolean;
+  isFree: boolean;
 }
 
 interface DashboardClientProps {
   userId: string | null;
   userEmail: string | null;
+  initialTier: SubscriptionTier;
 }
 
 // ===== UTILITY FUNCTIONS =====
@@ -82,21 +100,17 @@ const buildAuthorizationUrl = (service: keyof typeof CLIENT_IDS, state: string):
     params.append('show_dialog', 'true');
   }
 
-  const authUrl = `https://${process.env.NEXT_PUBLIC_AUTH0_DOMAIN}/authorize?${params.toString()}`;
-  
-  console.log('🔗 OAuth URL built:', {
-    service,
-    connection: service === 'google' ? 'google-oauth2' : service,
-    hasOpenId: BASE_SCOPES[service].includes('openid'),
-  });
-
-  return authUrl;
+  return `https://${process.env.NEXT_PUBLIC_AUTH0_DOMAIN}/authorize?${params.toString()}`;
 };
 
 const clearUrlParams = (paramsToRemove: string[]): void => {
   const url = new URL(window.location.href);
   paramsToRemove.forEach(param => url.searchParams.delete(param));
   window.history.replaceState({}, '', url.toString());
+};
+
+const isFeatureAvailable = (service: string, tier: SubscriptionTier): boolean => {
+  return TIER_FEATURES[tier]?.includes(service) || false;
 };
 
 // ===== ICON COMPONENTS =====
@@ -127,107 +141,201 @@ const LinkedInIcon = () => (
   </svg>
 );
 
-// ===== LOADING COMPONENTS =====
-const LoadingCard = ({ title }: { title: string }) => (
-  <Card>
-    <CardHeader>
-      <CardTitle>{title}</CardTitle>
-    </CardHeader>
-    <CardContent>
-      <div className="animate-pulse flex space-x-4">
-        <div className="rounded-full bg-gray-200 h-4 w-4"></div>
-        <div className="flex-1 space-y-2">
-          <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-          <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-        </div>
-      </div>
-    </CardContent>
-  </Card>
-);
-
-// ===== N8N STATUS COMPONENT =====
-function N8NStatusCard({ userId }: { userId: string | null }) {
-  const [userStatus, setUserStatus] = useState<N8NStatusData | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchN8NStatus = async () => {
-      if (!userId) return;
-
-      try {
-        const response = await fetch(`/api/user/n8n-status?userId=${userId}`);
-        if (response.ok) {
-          const data = await response.json();
-          setUserStatus(data);
-        }
-      } catch (error) {
-        console.error('Error fetching N8N status:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchN8NStatus();
-  }, [userId]);
-
-  if (loading) {
-    return <LoadingCard title="N8N Workspace" />;
-  }
-
-  if (!userStatus) {
-    return (
+// ===== OVERVIEW STATS COMPONENT =====
+function OverviewStats({ activeConnections, apiCalls, currentTier }: OverviewStatsProps) {
+  return (
+    <div className="grid gap-4 md:grid-cols-3">
       <Card>
-        <CardHeader>
-          <CardTitle>N8N Workspace</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium">Active Connections</CardTitle>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            className="h-4 w-4 text-muted-foreground"
+          >
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+          </svg>
         </CardHeader>
         <CardContent>
-          <p className="text-gray-500">N8N workspace not configured</p>
+          <div className="text-2xl font-bold">{activeConnections}</div>
         </CardContent>
       </Card>
-    );
-  }
 
-  const statusColor = userStatus.n8n_ready ? 'bg-green-500' : 'bg-yellow-500';
-  const statusText = userStatus.n8n_ready ? 'Ready' : 'Setting up...';
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium">API Calls</CardTitle>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            className="h-4 w-4 text-muted-foreground"
+          >
+            <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+          </svg>
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">{apiCalls}</div>
+        </CardContent>
+      </Card>
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>N8N Workspace Status</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="flex items-center space-x-3">
-          <div className={`w-3 h-3 rounded-full ${statusColor}`}></div>
-          <span className="font-medium">{statusText}</span>
-          <span className="text-sm text-gray-500">
-            ({userStatus.project_status})
-          </span>
-        </div>
-
-        {userStatus.n8n_url && (
-          <div className="flex items-center space-x-2">
-            <span className="text-sm text-gray-600">Workspace:</span>
-            <a
-              href={userStatus.n8n_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 hover:text-blue-800 text-sm underline"
-            >
-              Open N8N Dashboard
-            </a>
-          </div>
-        )}
-
-        <div className="text-sm text-gray-600">
-          Connected services: {userStatus.injected_providers_count || 0} / {userStatus.social_providers_count || 0}
-        </div>
-      </CardContent>
-    </Card>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium">Current Plan</CardTitle>
+          <SparklesIcon className="h-4 w-4 text-muted-foreground" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">{currentTier}</div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
-// ===== SERVICE STATUS COMPONENT =====
-function ServiceStatus({ userId }: { userId: string | null }) {
+// ===== SERVICE BUTTON COMPONENT =====
+function ServiceButton({ service, label, icon, userId, isLocked, isFree }: ServiceButtonProps) {
+  const [isConnecting, setIsConnecting] = useState(false);
+
+  const handleConnect = () => {
+    if (!userId || (isLocked && isFree)) return;
+
+    setIsConnecting(true);
+    const state = createOAuthState(userId, service);
+    const authUrl = buildAuthorizationUrl(service, state);
+
+    console.log('🔗 Initiating OAuth flow:', { service });
+    window.location.href = authUrl;
+  };
+
+  if (isLocked && isFree) {
+    return (
+      <Button
+        disabled
+        className="flex items-center justify-center gap-2 text-sm font-bold h-full w-full px-0 py-0 border border-gray-200 rounded-lg bg-gray-50 cursor-not-allowed"
+        variant="ghost"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2"
+          className="h-4 w-4"
+        >
+          <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+        </svg>
+        {label} (Locked)
+      </Button>
+    );
+  }
+
+  return (
+    <Button
+      onClick={handleConnect}
+      disabled={isConnecting || !userId}
+      className="flex items-center justify-center gap-2 text-sm font-bold h-full w-full px-0 py-0 border border-gray-200 rounded-lg hover:border-gray-300"
+      variant="ghost"
+    >
+      {isConnecting ? <Loader2 className="h-4 w-4 animate-spin" /> : icon}
+      {isConnecting ? "Connecting..." : `Connect ${label}`}
+    </Button>
+  );
+}
+
+// ===== INTEGRATIONS SECTION =====
+function IntegrationsSection({ userId, tier, isFree }: { userId: string | null; tier: SubscriptionTier; isFree: boolean }) {
+  const services = [
+    { service: "google" as const, label: "Google", icon: <GoogleIcon /> },
+    { service: "github" as const, label: "GitHub", icon: <GithubIcon className="h-4 w-4" /> },
+    { service: "spotify" as const, label: "Spotify", icon: <SpotifyIcon /> },
+    { service: "discord" as const, label: "Discord", icon: <DiscordIcon /> },
+    { service: "linkedin" as const, label: "LinkedIn", icon: <LinkedInIcon /> },
+  ];
+
+  const availableServices = services.filter(s => isFeatureAvailable(s.service, tier));
+  const lockedServices = services.filter(s => !isFeatureAvailable(s.service, tier));
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold">Integrations</h3>
+          <p className="text-sm text-muted-foreground">Connect and manage your service integrations</p>
+        </div>
+
+        <div className="border-b border-gray-200 mb-4">
+          <div className="flex space-x-4">
+            <button className="pb-2 border-b-2 border-blue-500 text-sm font-medium">
+              Available ({availableServices.length})
+            </button>
+            {lockedServices.length > 0 && (
+              <button className="pb-2 text-sm font-medium text-gray-500">
+                Locked ({lockedServices.length})
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Available Services */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 mb-6">
+          {availableServices.map(({ service, label, icon }) => (
+            <Card key={service} className="border-0 shadow-sm">
+              <CardContent className="p-4 flex items-center justify-center h-24">
+                <ServiceButton
+                  service={service}
+                  label={label}
+                  icon={icon}
+                  userId={userId}
+                  isLocked={false}
+                  isFree={isFree}
+                />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {/* Locked Services */}
+        {lockedServices.length > 0 && (
+          <>
+            <h4 className="text-sm font-medium text-gray-500 mb-3">Upgrade to unlock</h4>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
+              {lockedServices.map(({ service, label, icon }) => (
+                <Card key={service} className="border-0 shadow-sm opacity-60">
+                  <CardContent className="p-4 flex items-center justify-center h-24">
+                    <ServiceButton
+                      service={service}
+                      label={label}
+                      icon={icon}
+                      userId={userId}
+                      isLocked={true}
+                      isFree={isFree}
+                    />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ===== RECENT ACTIVITY COMPONENT =====
+function RecentActivity({ userId }: { userId: string | null }) {
   const [connections, setConnections] = useState<SocialCredential[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -251,23 +359,57 @@ function ServiceStatus({ userId }: { userId: string | null }) {
     fetchConnections();
   }, [userId]);
 
-  if (loading || connections.length === 0) {
-    return null;
+  if (loading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Activity</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="animate-pulse space-y-3">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="flex items-center space-x-3">
+                <div className="rounded-full bg-gray-200 h-8 w-8"></div>
+                <div className="flex-1 space-y-2">
+                  <div className="h-3 bg-gray-200 rounded w-3/4"></div>
+                  <div className="h-2 bg-gray-200 rounded w-1/2"></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (connections.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Activity</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground text-center py-6">
+            No connections yet. Connect a service to get started!
+          </p>
+        </CardContent>
+      </Card>
+    );
   }
 
   const getConnectionStatus = (connection: SocialCredential) => {
     if (connection.injectedToN8n) {
       const date = connection.injectedAt ? new Date(connection.injectedAt).toLocaleDateString() : 'Unknown';
-      return { color: 'bg-green-500', text: `Connected ${date}` };
+      return { color: 'bg-green-500', text: `Connected ${date}`, icon: '✓' };
     }
-    if (connection.injectionError) return { color: 'bg-red-500', text: 'Failed' };
-    return { color: 'bg-yellow-500', text: 'Pending...' };
+    if (connection.injectionError) return { color: 'bg-red-500', text: 'Failed', icon: '✕' };
+    return { color: 'bg-yellow-500', text: 'Pending...', icon: '○' };
   };
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Recent Connections</CardTitle>
+        <CardTitle>Recent Activity</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="space-y-3">
@@ -276,11 +418,16 @@ function ServiceStatus({ userId }: { userId: string | null }) {
             return (
               <div
                 key={conn.id}
-                className="flex items-center justify-between py-2 border-b border-gray-100 last:border-b-0"
+                className="flex items-center justify-between py-3 border-b border-gray-100 last:border-b-0"
               >
                 <div className="flex items-center space-x-3">
                   <div className={`w-2 h-2 rounded-full ${status.color}`}></div>
-                  <span className="font-medium capitalize">{conn.provider}</span>
+                  <div>
+                    <p className="font-medium capitalize">{conn.provider}</p>
+                    <p className="text-xs text-gray-500">
+                      {new Date(conn.createdAt).toLocaleString()}
+                    </p>
+                  </div>
                   {conn.injectionError && (
                     <span className="text-xs text-red-500 bg-red-50 px-2 py-1 rounded">
                       Error
@@ -298,89 +445,6 @@ function ServiceStatus({ userId }: { userId: string | null }) {
     </Card>
   );
 }
-
-// ===== SERVICE BUTTON COMPONENT =====
-function ServiceButton({ service, label, icon, userId }: ServiceButtonProps) {
-  const [isConnecting, setIsConnecting] = useState(false);
-
-  const handleConnect = () => {
-    if (!userId) return;
-
-    setIsConnecting(true);
-    const state = createOAuthState(userId, service);
-    const authUrl = buildAuthorizationUrl(service, state);
-
-    console.log('🔗 Initiating OAuth flow:', { service });
-    window.location.href = authUrl;
-  };
-
-  return (
-    <Button
-      onClick={handleConnect}
-      disabled={isConnecting || !userId}
-      className="flex items-center justify-center gap-2 text-sm font-bold h-full w-full px-0 py-0 border border-gray-200 rounded-lg hover:border-gray-300"
-      variant="ghost"
-    >
-      {isConnecting ? <Loader2 className="h-4 w-4 animate-spin" /> : icon}
-      {isConnecting ? "Connecting..." : `Connect ${label}`}
-    </Button>
-  );
-}
-
-// ===== SERVICE GRID COMPONENT =====
-const ServiceGrid = ({ userId }: { userId: string | null }) => {
-  const services = [
-    { service: "google" as const, label: "Google", icon: <GoogleIcon /> },
-    { service: "spotify" as const, label: "Spotify", icon: <SpotifyIcon /> },
-    { service: "discord" as const, label: "Discord", icon: <DiscordIcon /> },
-    { service: "github" as const, label: "GitHub", icon: <GithubIcon className="h-4 w-4" /> },
-    { service: "linkedin" as const, label: "LinkedIn", icon: <LinkedInIcon /> },
-  ];
-
-  return (
-    <div>
-      <h3 className="text-lg font-semibold mb-4">Connect Services</h3>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-5">
-        {services.map(({ service, label, icon }) => (
-          <Card key={service} className="border-0 shadow-none">
-            <CardContent className="p-4 flex items-center justify-center h-24">
-              <ServiceButton
-                service={service}
-                label={label}
-                icon={icon}
-                userId={userId}
-              />
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-// ===== INSTRUCTIONS COMPONENT =====
-const InstructionsCard = () => (
-  <Card>
-    <CardHeader>
-      <CardTitle>How it works</CardTitle>
-    </CardHeader>
-    <CardContent>
-      <div className="text-sm space-y-2 text-gray-600">
-        <p><strong>Step 1:</strong> Wait for your N8N workspace to be ready (green status above)</p>
-        <p><strong>Step 2:</strong> Click "Connect" on any service you want to use</p>
-        <p><strong>Step 3:</strong> Authorize the connection in the popup window</p>
-        <p><strong>Step 4:</strong> Credentials are automatically injected into your N8N workspace</p>
-        <p><strong>Step 5:</strong> Open your N8N dashboard and start building workflows!</p>
-        <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-          <p className="text-blue-800 text-xs">
-            <strong>Note:</strong> For Google services, you'll be asked to consent again to ensure refresh tokens are provided.
-            This is required for long-term access to your data.
-          </p>
-        </div>
-      </div>
-    </CardContent>
-  </Card>
-);
 
 // ===== NOTIFICATION COMPONENT =====
 interface NotificationProps {
@@ -408,10 +472,15 @@ const Notification = ({ message, onDismiss }: NotificationProps) => {
 };
 
 // ===== MAIN DASHBOARD COMPONENT =====
-export function DashboardClient({ userId, userEmail }: DashboardClientProps) {
+export function DashboardClient({ userId, userEmail, initialTier }: DashboardClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [message, setMessage] = useState("");
+  const { tier, isFree } = useSubscription();
+  const [stats, setStats] = useState({ activeConnections: 0, apiCalls: 0 });
+
+  // Use initialTier as fallback if subscription hook fails
+  const currentTier = tier || initialTier;
 
   useEffect(() => {
     const connected = searchParams.get("connected");
@@ -420,7 +489,7 @@ export function DashboardClient({ userId, userEmail }: DashboardClientProps) {
 
     if (connected && status === "success") {
       setMessage(
-        `✅ Successfully connected ${connected}! Check your N8N instance for new credentials with ID token support.`
+        `✅ Successfully connected ${connected}! Your credentials are now available in N8N.`
       );
       clearUrlParams(['connected', 'status', 'timestamp']);
       setTimeout(() => setMessage(""), 5000);
@@ -431,8 +500,62 @@ export function DashboardClient({ userId, userEmail }: DashboardClientProps) {
     }
   }, [searchParams]);
 
+  // Fetch stats
+  useEffect(() => {
+    const fetchStats = async () => {
+      if (!userId) return;
+
+      try {
+        const [n8nResponse, credentialsResponse] = await Promise.all([
+          fetch(`/api/user/n8n-status?userId=${userId}`),
+          fetch(`/api/user/social-credentials?userId=${userId}`)
+        ]);
+
+        if (n8nResponse.ok && credentialsResponse.ok) {
+          const n8nData = await n8nResponse.json();
+          const credData = await credentialsResponse.json();
+
+          setStats({
+            activeConnections: n8nData.injected_providers_count || 0,
+            apiCalls: credData.length * 10, // Mock API calls based on connections
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching stats:', error);
+      }
+    };
+
+    fetchStats();
+  }, [userId]);
+
   return (
     <div className="space-y-6">
+      {/* Upgrade Banner */}
+      {isFree && (
+        <div className="rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-cyan-50 p-4 dark:border-blue-800 dark:from-blue-950 dark:to-cyan-950">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900">
+                <SparklesIcon className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div>
+                <h3 className="font-semibold">Upgrade to unlock more integrations</h3>
+                <p className="text-sm text-muted-foreground">
+                  Get access to Slack, Airtable, Notion and more with Pro plan
+                </p>
+              </div>
+            </div>
+            <Button asChild>
+              <Link href="/pricing">
+                <SparklesIcon className="mr-2 h-4 w-4" />
+                View Plans
+              </Link>
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Notification */}
       {message && (
         <Notification
           message={message}
@@ -440,10 +563,22 @@ export function DashboardClient({ userId, userEmail }: DashboardClientProps) {
         />
       )}
 
-      <N8NStatusCard userId={userId} />
-      <ServiceGrid userId={userId} />
-      <ServiceStatus userId={userId} />
-      <InstructionsCard />
+      {/* Overview Stats */}
+      <OverviewStats 
+        activeConnections={stats.activeConnections}
+        apiCalls={stats.apiCalls}
+        currentTier={currentTier}
+      />
+
+      {/* Integrations */}
+      <IntegrationsSection 
+        userId={userId}
+        tier={currentTier}
+        isFree={isFree}
+      />
+
+      {/* Recent Activity */}
+      <RecentActivity userId={userId} />
     </div>
   );
 }
