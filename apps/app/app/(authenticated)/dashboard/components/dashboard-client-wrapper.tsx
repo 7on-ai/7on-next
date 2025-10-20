@@ -219,37 +219,37 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
       <div className="relative z-10 flex items-center justify-center min-h-screen p-6">
         <div className="w-full max-w-xl space-y-6">
           
-          {/* Active Connections Card */}
-          <div className="w-full p-8 rounded-3xl bg-white/95 backdrop-blur-xl border border-white/40 shadow-2xl">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-lg font-semibold text-gray-800">Active Connections</h3>
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" className="h-5 w-5 text-gray-500">
-                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                <circle cx="9" cy="7" r="4" />
-                <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
-              </svg>
-            </div>
-            <div className="text-5xl font-bold text-gray-900">{stats.activeConnections}</div>
-          </div>
+{/* Active Connections Card (Glassmorphic Style) */}
+<div className="w-80 p-6 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-xl">
+  <div className="flex items-center justify-between mb-3">
+    <h3 className="text-white text-lg font-semibold">Active Connections</h3>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" className="h-5 w-5 text-white/70">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  </div>
+  <div className="text-5xl font-bold text-white">{stats.activeConnections}</div>
+</div>
 
-          {/* Current Plan Card */}
-          <div className="w-full p-8 rounded-3xl bg-white/95 backdrop-blur-xl border border-white/40 shadow-2xl">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-lg font-semibold text-gray-800">Current Plan</h3>
-              <SparklesIcon className="h-5 w-5 text-gray-500" />
-            </div>
-            <div className="flex items-baseline justify-between">
-              <div className="text-5xl font-bold text-gray-900">{currentTier}</div>
-              {isFree && (
-                <Button asChild size="sm" className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white">
-                  <Link href="/pricing" className="flex items-center gap-2">
-                    <SparklesIcon className="h-4 w-4" />
-                    Upgrade
-                  </Link>
-                </Button>
-              )}
-            </div>
-          </div>
+{/* Current Plan Card (Glassmorphic Style) */}
+<div className="w-80 p-6 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-xl">
+  <div className="flex items-center justify-between mb-3">
+    <h3 className="text-white text-lg font-semibold">Current Plan</h3>
+    <SparklesIcon className="h-5 w-5 text-white/70" />
+  </div>
+  <div className="flex items-baseline justify-between">
+    <div className="text-5xl font-bold text-white">{currentTier}</div>
+    {isFree && (
+      <Button asChild size="sm" className="bg-white/20 hover:bg-white/30 text-white border border-white/30 transition-all duration-300 ease-out rounded-xl shadow-md">
+        <Link href="/pricing" className="flex items-center gap-2">
+          <SparklesIcon className="h-4 w-4 text-white" />
+          Upgrade
+        </Link>
+      </Button>
+    )}
+  </div>
+</div>
 
 {/* Available Integrations Section (Glassmorphic Style เหมือนด้านล่างเป๊ะ) */}
 <div className="w-80 p-6 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-xl">
@@ -281,30 +281,26 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
   </div>
 </div>
 
-          {/* Locked Integrations Section */}
-          {lockedServices.length > 0 && (
-            <div className="w-full p-8 rounded-3xl bg-white/90 backdrop-blur-xl border border-white/30 shadow-2xl opacity-75">
-              <h3 className="text-xl font-bold text-gray-700 mb-6">Upgrade to Unlock</h3>
-              <div className="space-y-3">
-                {lockedServices.map(({ service, label, icon }) => (
-                  <div
-                    key={service}
-                    className="flex items-center gap-4 px-5 py-4 rounded-2xl bg-gray-100/50 border border-gray-200 cursor-not-allowed"
-                  >
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/50">
-                      {icon}
-                    </div>
-                    <span className="text-gray-500 font-semibold text-base flex-1">{label}</span>
-                    <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                    </svg>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+{/* Locked Integrations Section (Glassmorphic Style) */}
+{lockedServices.length > 0 && (
+  <div className="w-80 p-6 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-xl opacity-80">
+    <h3 className="text-white text-xl font-bold mb-6">Upgrade to Unlock</h3>
+    <div className="space-y-2">
+      {lockedServices.map(({ service, label, icon }) => (
+        <div
+          key={service}
+          className="flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-300 ease-out cursor-not-allowed border border-white/20 bg-white/5"
+        >
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg opacity-70">{icon}</div>
+          <span className="text-white/70 font-medium text-sm flex-1">{label}</span>
+          <svg className="h-4 w-4 text-white/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
         </div>
-      </div>
+      ))}
+    </div>
+  </div>
+)}
 
       {/* Toast Notification */}
       {toast && (
