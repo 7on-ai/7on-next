@@ -11,11 +11,11 @@ import Link from 'next/link';
 
 // ===== CONSTANTS & CONFIGURATION =====
 const CLIENT_IDS = {
-  google: process.env.NEXT_PUBLIC_AUTH0_GOOGLE_CLIENT_ID,
-  spotify: process.env.NEXT_PUBLIC_AUTH0_SPOTIFY_CLIENT_ID,
-  discord: process.env.NEXT_PUBLIC_AUTH0_DISCORD_CLIENT_ID,
-  github: process.env.NEXT_PUBLIC_AUTH0_GITHUB_CLIENT_ID,
-  linkedin: process.env.NEXT_PUBLIC_AUTH0_LINKEDIN_CLIENT_ID,
+  google: process.env.NEXT_PUBLIC_AUTH0_GOOGLE_CLIENT_ID ?? "",
+  spotify: process.env.NEXT_PUBLIC_AUTH0_SPOTIFY_CLIENT_ID ?? "",
+  discord: process.env.NEXT_PUBLIC_AUTH0_DISCORD_CLIENT_ID ?? "",
+  github: process.env.NEXT_PUBLIC_AUTH0_GITHUB_CLIENT_ID ?? "",
+  linkedin: process.env.NEXT_PUBLIC_AUTH0_LINKEDIN_CLIENT_ID ?? "",
 };
 
 const BASE_SCOPES = {
@@ -85,10 +85,11 @@ const buildAuthorizationUrl = (service: keyof typeof CLIENT_IDS, state: string):
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: CLIENT_IDS[service]!,
-    redirect_uri: `${process.env.NEXT_PUBLIC_APP_URL}/api/oauth-callback`,
+    redirect_uri: `${process.env.NEXT_PUBLIC_AUTH0_CALLBACK_URL ?? process.env.NEXT_PUBLIC_APP_URL + '/api/oauth-callback'}`,
     scope: BASE_SCOPES[service],
-    state: state,
-    connection: service === 'google' ? 'google-oauth2' : service
+    state,
+    audience: `https://${process.env.NEXT_PUBLIC_AUTH0_DOMAIN}/api/v2/`, // เพิ่มเพื่อขอ token API
+    connection: service === 'google' ? 'google-oauth2' : service,
   });
 
   if (service === 'google') {
@@ -104,6 +105,7 @@ const buildAuthorizationUrl = (service: keyof typeof CLIENT_IDS, state: string):
 };
 
 const clearUrlParams = (paramsToRemove: string[]): void => {
+  if (typeof window === 'undefined') return;
   const url = new URL(window.location.href);
   paramsToRemove.forEach(param => url.searchParams.delete(param));
   window.history.replaceState({}, '', url.toString());
@@ -207,7 +209,8 @@ function ServiceButton({ service, label, icon, userId, isLocked, isFree }: Servi
   const [isConnecting, setIsConnecting] = useState(false);
 
   const handleConnect = () => {
-    if (!userId || (isLocked && isFree)) return;
+    if (!userId) return;
+if (isLocked && isFree) return;
 
     setIsConnecting(true);
     const state = createOAuthState(userId, service);
@@ -476,7 +479,7 @@ export function DashboardClient({ userId, userEmail, initialTier }: DashboardCli
   const router = useRouter();
   const searchParams = useSearchParams();
   const [message, setMessage] = useState("");
-  const { tier, isFree } = useSubscription();
+  const { tier, isFree } = useSubscription() ?? { tier: initialTier, isFree: initialTier === 'FREE' };
   const [stats, setStats] = useState({ activeConnections: 0, apiCalls: 0 });
 
   // Use initialTier as fallback if subscription hook fails
