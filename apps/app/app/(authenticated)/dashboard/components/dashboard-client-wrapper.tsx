@@ -228,7 +228,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
           {/* Header / Logo */}
           <div className="mb-6 flex items-center justify-center">
             <img 
-              src="/logo.svg" 
+              src="/logo-main.svg" 
               alt="Logo" 
               className="h-12 w-12 object-contain"
             />
@@ -249,7 +249,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
   </div>
 
   <div className="mb-6 text-center">
-    <div className="text-4xl md:text-5xl font-extrabold text-[#FF6B5B] dark:text-[#8BE0FF]">
+    <div className="text-4xl md:text-5xl font-semibold text-[#FF6B5B] dark:text-[#8bffbb]">
       {stats.activeConnections}
     </div>
     <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-[#FF6B5B]/40 to-transparent mt-4 rounded-full" />
@@ -338,34 +338,37 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
           </div>
 
           {/* Toast Notification */}
-          {toast && (
-            <div
-              aria-live="polite"
-              className={`fixed z-50 left-1/2 -translate-x-1/2 top-8 transform transition-all duration-400 ${toast.visible ? "opacity-100 translate-y-0 scale-100" : "opacity-0 -translate-y-8 scale-95"}`}
-            >
-              <div className="relative overflow-hidden rounded-2xl bg-white/90 dark:bg-[#0b0d12]/90 backdrop-blur-lg border border-slate-200/40 dark:border-slate-700/40 px-5 py-3 shadow-2xl">
-                <div className="flex items-center gap-3">
-                  <div className={`w-8 h-8 rounded-full bg-green-100/90 dark:bg-green-900/30 flex items-center justify-center transition-transform ${toast.showIcon ? "scale-100" : "scale-75"}`}>
-                    <Check className="w-4 h-4 text-green-600 dark:text-green-300" />
-                  </div>
-                  <div className="text-sm text-slate-900 dark:text-slate-100 font-medium">{toast.message}</div>
-                </div>
-                <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-slate-200/30 dark:bg-slate-700/30">
-                  <div
-                    className="h-full bg-gradient-to-r from-green-400 to-green-600"
-                    style={{ animation: toast.visible ? "progressBar 2.5s linear forwards" : "none", width: toast.visible ? "100%" : "0%" }}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
+{toast && (
+  <div
+    aria-live="polite"
+    className={`fixed z-[9999] left-1/2 -translate-x-1/2 top-[env(safe-area-inset-top,1rem)] transform transition-all duration-300 ease-out
+    ${toast.visible ? "opacity-100 translate-y-0 scale-100 pointer-events-auto" : "opacity-0 -translate-y-6 scale-95 pointer-events-none"}`}
+  >
+    <div className="relative overflow-hidden rounded-2xl bg-white/95 dark:bg-[#0b0d12]/90 backdrop-blur-xl border border-slate-200/40 dark:border-slate-700/40 px-5 py-3 shadow-2xl max-w-[90vw] sm:max-w-sm">
+      <div className="flex items-center gap-3">
+        <div
+          className={`w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center transition-transform
+          ${toast.showIcon ? "scale-100" : "scale-75"}`}
+        >
+          <Check className="w-4 h-4 text-green-600 dark:text-green-300" />
+        </div>
+        <div className="text-sm text-slate-900 dark:text-slate-100 font-medium break-words">
+          {toast.message}
+        </div>
+      </div>
 
-          <style jsx>{`
-            @keyframes progressBar {
-              0% { width: 100%; }
-              100% { width: 0%; }
-            }
-          `}</style>
+      {/* Progress Bar */}
+      <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-slate-200/30 dark:bg-slate-700/30">
+        <div
+          className="h-full bg-gradient-to-r from-green-400 to-green-600"
+          style={{
+            animation: toast.visible ? "progressBar 2.5s linear forwards" : "none",
+          }}
+        />
+      </div>
+    </div>
+  </div>
+)}
         </div>
       </div>
     </>
