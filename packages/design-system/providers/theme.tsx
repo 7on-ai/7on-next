@@ -7,8 +7,8 @@ export const ThemeProvider = ({
 }: ThemeProviderProps) => (
   <NextThemeProvider
     attribute="class"
-    defaultTheme="system"
-    enableSystem
+    defaultTheme="dark"          // ✅ ตั้งค่าให้ dark เป็น default เสมอ
+    enableSystem={false}         // ✅ ปิดระบบ auto detect จาก OS
     disableTransitionOnChange
     {...properties}
   >

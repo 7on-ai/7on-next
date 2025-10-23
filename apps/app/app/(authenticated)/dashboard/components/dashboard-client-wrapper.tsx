@@ -228,7 +228,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
           {/* Header / Logo */}
           <div className="mb-6 flex items-center justify-center">
             <img 
-              src="/logo.png" 
+              src="/logo.svg" 
               alt="Logo" 
               className="h-12 w-12 object-contain"
             />
