@@ -240,32 +240,39 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
             onMouseEnter={() => setHovering(true)}
             onMouseLeave={() => setHovering(false)}
           >
-            {/* Card 1: Active Connections + Current Plan */}
-            <div
-              className="relative p-6 rounded-2xl bg-white/30 dark:bg-white/5 backdrop-blur-lg border border-white/30 dark:border-white/10 shadow-[0_8px_32px_rgba(2,6,23,0.1)] dark:shadow-[0_8px_32px_rgba(6,8,20,0.4)] transition-all hover:bg-white/40 dark:hover:bg-white/8"
-              style={{ boxShadow: "inset 0 -1px 0 rgba(255,255,255,0.1)" }}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-slate-800 dark:text-slate-200 text-lg font-semibold">Active Connections</h3>
-              </div>
 
-              <div className="mb-6">
-                <div className="text-4xl md:text-5xl font-extrabold text-[#FF6B5B] dark:text-[#8BE0FF]">{stats.activeConnections}</div>
-                <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-[#FF6B5B]/40 to-transparent mt-4 rounded-full" />
-              </div>
+{/* Card 1: Active Connections + Current Plan */}
+<div className="relative p-6 rounded-2xl transition-all">
+  <div className="flex items-center justify-between mb-4">
+    <h3 className="text-slate-800 dark:text-slate-200 text-lg font-semibold">
+      Active Connections
+    </h3>
+  </div>
 
-              <div className="w-full h-px bg-slate-200/40 dark:bg-slate-700/40 my-4" />
+  <div className="mb-6">
+    <div className="text-4xl md:text-5xl font-extrabold text-[#FF6B5B] dark:text-[#8bffbb]">
+      {stats.activeConnections}
+    </div>
+    <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-[#FF6B5B]/40 to-transparent mt-4 rounded-full" />
+  </div>
 
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="text-slate-700 dark:text-slate-200 text-lg font-semibold">Current Plan</h4>
-                  <div className="mt-1 text-4xl font-bold text-slate-900 dark:text-white">{currentTier}</div>
-                </div>
-              </div>
-            </div>
+  <div className="w-full h-px bg-slate-200/40 dark:bg-slate-700/40 my-4" />
+
+  <div className="flex items-center justify-between">
+    <div>
+      <h4 className="text-slate-700 dark:text-slate-200 text-lg font-semibold">
+        Current Plan
+      </h4>
+      <div className="mt-1 text-4xl font-bold text-slate-900 dark:text-white">
+        {currentTier}
+      </div>
+    </div>
+  </div>
+</div>
+
 
             {/* Card 2: Available Integrations */}
-            <div className="p-6 rounded-2xl bg-white/30 dark:bg-white/5 backdrop-blur-lg border border-white/30 dark:border-white/10 shadow-[0_8px_32px_rgba(2,6,23,0.08)] transition-all hover:bg-white/40 dark:hover:bg-white/8">
+            <div className="p-6 rounded-2xl bg-white/20 dark:bg-white/3 backdrop-blur-lg border border-white/40 dark:border-white/20 shadow-[0_8px_32px_rgba(2,6,23,0.08)] transition-all hover:bg-white/30 dark:hover:bg-white/5">
               <h3 className="text-slate-800 dark:text-slate-200 text-lg font-bold mb-6">Available Integrations</h3>
 
               <div className="space-y-3">
@@ -299,7 +306,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
 
             {/* Card 3: Upgrade to Unlock */}
             {lockedServices.length > 0 && (
-              <div className="p-6 rounded-2xl bg-white/30 dark:bg-white/5 backdrop-blur-lg border border-white/30 dark:border-white/10 shadow-[0_8px_32px_rgba(2,6,23,0.08)] hover:bg-white/40 dark:hover:bg-white/8 transition-all">
+              <div className="p-6 rounded-2xl bg-white/20 dark:bg-white/3 backdrop-blur-lg border border-white/40 dark:border-white/20 shadow-[0_8px_32px_rgba(2,6,23,0.08)] transition-all hover:bg-white/30 dark:hover:bg-white/5">
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-slate-800 dark:text-slate-200 text-lg font-bold">Upgrade to Unlock</h3>
                   {isFree && (
