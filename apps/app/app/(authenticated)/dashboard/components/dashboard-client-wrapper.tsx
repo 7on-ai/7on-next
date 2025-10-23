@@ -277,18 +277,6 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
                 <div className="mt-1 text-4xl font-bold text-slate-900 dark:text-white">{currentTier}</div>
               </div>
 
-              <div className="flex flex-col items-end gap-3">
-                {isFree ? (
-                  <Button asChild size="sm" className="rounded-xl px-4 py-2 !bg-gradient-to-r from-[#FF6B5B] to-[#D14030] text-white shadow-[0_10px_30px_rgba(0,209,255,0.14)] hover:opacity-95">
-                    <Link href="/pricing" className="flex items-center gap-2">
-                      <SparklesIcon className="h-4 w-4" />
-                      Upgrade
-                    </Link>
-                  </Button>
-                ) : (
-                  <div className="text-sm text-slate-500 dark:text-slate-400">You're on a premium tier</div>
-                )}
-              </div>
             </div>
 
             {/* subtle agent pulse */}
@@ -357,9 +345,18 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
 
               <div className="mt-6">
                 <div className="text-sm text-slate-500 dark:text-slate-400 mb-3">Unlock more integrations and powerful AI features by upgrading your plan.</div>
-                <Button asChild className="rounded-xl px-4 py-2 !bg-gradient-to-r from-[#FF6B5B] to-[#D14030] text-white w-full shadow-[0_12px_40px_rgba(122,95,255,0.12)]">
-                  <Link href="/pricing">See Plans</Link>
-                </Button>
+              <div className="flex flex-col items-end gap-3">
+                {isFree ? (
+                  <Button asChild size="sm" className="rounded-xl px-4 py-2 !bg-gradient-to-r from-[#FF6B5B] to-[#D14030] text-white shadow-[0_10px_30px_rgba(0,209,255,0.14)] hover:opacity-95">
+                    <Link href="/pricing" className="flex items-center gap-2">
+                      <SparklesIcon className="h-4 w-4" />
+                      Upgrade
+                    </Link>
+                  </Button>
+                ) : (
+                  <div className="text-sm text-slate-500 dark:text-slate-400">You're on a premium tier</div>
+                )}
+              </div>
               </div>
             </div>
           )}
