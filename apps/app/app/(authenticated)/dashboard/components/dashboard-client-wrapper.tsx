@@ -239,6 +239,20 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
   return (
     <div className="w-full min-h-screen p-6 bg-gradient-to-br from-white via-white/60 to-white/40 dark:from-[#07070a] dark:via-[#0b0d12] dark:to-[#121418] transition-colors duration-500">
       <div className="max-w-7xl mx-auto">
+        {/* Header / Breadcrumb */}
+        <div className="mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-md bg-gradient-to-br from-[#00D1FF] to-[#7A5FFF] p-[2px] shadow-[0_6px_18px_rgba(122,95,255,0.12)]">
+              <div className="h-full w-full bg-white/10 backdrop-blur-sm rounded-sm flex items-center justify-center overflow-hidden">
+                <img 
+                  src="/workspaces/7on-next/apps/app/app/logo.png" 
+                  alt="Logo" 
+                  className="h-6 w-6 object-contain"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* Three Cards (kept layout) */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
