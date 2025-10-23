@@ -241,15 +241,15 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
             onMouseLeave={() => setHovering(false)}
           >
 {/* Card 1: Active Connections + Current Plan */}
-<div className="flex items-center justify-center min-h-screen relative p-6 rounded-2xl transition-all">
-  <div className="flex items-center justify-between mb-4">
+<div className="relative p-6 rounded-2xl transition-all">
+  <div className="flex items-center justify-center mb-4">
     <h3 className="text-slate-800 dark:text-slate-200 text-lg font-semibold">
       Active Connections
     </h3>
   </div>
 
-  <div className="mb-6">
-    <div className="text-4xl md:text-5xl font-bold text-[#FF6B5B] dark:text-[#FF6B5B]">
+  <div className="mb-6 text-center">
+    <div className="text-4xl md:text-5xl font-extrabold text-[#FF6B5B] dark:text-[#8BE0FF]">
       {stats.activeConnections}
     </div>
     <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-[#FF6B5B]/40 to-transparent mt-4 rounded-full" />
@@ -257,7 +257,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
 
   <div className="w-full h-px bg-slate-200/40 dark:bg-slate-700/40 my-4" />
 
-  <div className="flex items-center justify-between">
+  <div className="flex flex-col items-center justify-center text-center">
     <div>
       <h4 className="text-slate-700 dark:text-slate-200 text-lg font-semibold">
         Current Plan
@@ -269,9 +269,8 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
   </div>
 </div>
 
-
             {/* Card 2: Available Integrations */}
-            <div className="p-6 rounded-xl bg-white/30 dark:bg-white/5 border border-white/30 dark:border-white/10 shadow-[0_8px_32px_rgba(2,6,23,0.08)] transition-all hover:bg-white/40 dark:hover:bg-white/8">
+            <div className="p-6 rounded-2xl bg-white/30 dark:bg-white/5 border border-white/30 dark:border-white/10 shadow-[0_8px_32px_rgba(2,6,23,0.08)] transition-all hover:bg-white/40 dark:hover:bg-white/8">
               <h3 className="text-slate-800 dark:text-slate-200 text-lg font-bold mb-6">Available Integrations</h3>
 
               <div className="space-y-3">
@@ -305,7 +304,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
 
             {/* Card 3: Upgrade to Unlock */}
             {lockedServices.length > 0 && (
-              <div className="p-6 rounded-xl bg-white/30 dark:bg-white/5 border border-white/30 dark:border-white/10 shadow-[0_8px_32px_rgba(2,6,23,0.08)] hover:bg-white/40 dark:hover:bg-white/8 transition-all">
+              <div className="p-6 rounded-2xl bg-white/30 dark:bg-white/5 border border-white/30 dark:border-white/10 shadow-[0_8px_32px_rgba(2,6,23,0.08)] hover:bg-white/40 dark:hover:bg-white/8 transition-all">
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-slate-800 dark:text-slate-200 text-lg font-bold">Upgrade to Unlock</h3>
                   {isFree && (
