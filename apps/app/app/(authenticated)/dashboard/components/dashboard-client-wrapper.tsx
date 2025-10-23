@@ -250,9 +250,6 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
               <div className="text-xs text-slate-500 dark:text-slate-400">Overview</div>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="text-sm text-slate-600 dark:text-slate-300">Signed in as <span className="font-medium text-slate-900 dark:text-white">{userEmail ?? "—"}</span></div>
-          </div>
         </div>
 
         {/* Three Cards (kept layout) */}
@@ -268,7 +265,6 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
               <div className="text-slate-500 dark:text-slate-400">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                   <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                  <circle cx="9" cy="7" r="4" />
                   <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
                 </svg>
               </div>
