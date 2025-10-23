@@ -199,68 +199,91 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
 
   return (
     <div className="w-full min-h-screen relative overflow-hidden">
-      {/* Background Image */}
-      <div
-        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-        style={{
-          backgroundImage: 'url(/background.jpeg)',
-          filter: 'blur(0px)',
-        }}
-      />
-
-      {/* Overlay for better readability */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/40" />
+      {/* Gradient Background */}
+      <div className="absolute inset-0 bg-gradient-to-br from-gray-50 via-gray-100 to-gray-50" />
 
       {/* Main Content Container - Centered */}
       <div className="relative z-10 flex items-center justify-center min-h-screen p-6">
-        <div className="w-full max-w-xl space-y-6">
-          {/* Active Connections Card (Glassmorphic Style) */}
-          <div className="w-80 p-6 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-xl">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-white text-lg font-semibold">Active Connections</h3>
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                className="h-5 w-5 text-white/70"
-              >
-                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                <circle cx="9" cy="7" r="4" />
-                <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
-              </svg>
-            </div>
-            <div className="text-5xl font-bold text-white">{stats.activeConnections}</div>
-          </div>
+        <div className="w-full max-w-6xl space-y-6">
+          {/* Stats Section - Three Cards in Row (Desktop) / Column (Mobile) */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Combined Card: Active Connections + Current Plan */}
+            <div className="lg:col-span-2 p-6 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-xl" style={{ boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.15)' }}>
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+                {/* Active Connections */}
+                <div className="flex-1">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-white text-lg font-semibold">Active Connections</h3>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      className="h-5 w-5 text-white/70"
+                    >
+                      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                      <circle cx="9" cy="7" r="4" />
+                      <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+                    </svg>
+                  </div>
+                  <div className="text-5xl font-bold text-white">{stats.activeConnections}</div>
+                </div>
 
-          {/* Current Plan Card (Glassmorphic Style) */}
-          <div className="w-80 p-6 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-xl">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-white text-lg font-semibold">Current Plan</h3>
-              <SparklesIcon className="h-5 w-5 text-white/70" />
+                {/* Divider - Hidden on mobile */}
+                <div className="hidden md:block w-px h-16 bg-white/20" />
+
+                {/* Current Plan */}
+                <div className="flex-1">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-white text-lg font-semibold">Current Plan</h3>
+                    <SparklesIcon className="h-5 w-5 text-white/70" />
+                  </div>
+                  <div className="flex items-baseline justify-between">
+                    <div className="text-5xl font-bold text-white">{currentTier}</div>
+                    {isFree && (
+                      <Button
+                        asChild
+                        size="sm"
+                        className="bg-white/20 hover:bg-white/30 text-white border border-white/30 transition-all duration-300 ease-out rounded-xl shadow-md"
+                      >
+                        <Link href="/pricing" className="flex items-center gap-2">
+                          <SparklesIcon className="h-4 w-4 text-white" />
+                          Upgrade
+                        </Link>
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="flex items-baseline justify-between">
-              <div className="text-5xl font-bold text-white">{currentTier}</div>
-              {isFree && (
-                <Button
-                  asChild
-                  size="sm"
-                  className="bg-white/20 hover:bg-white/30 text-white border border-white/30 transition-all duration-300 ease-out rounded-xl shadow-md"
+
+            {/* API Calls Card */}
+            <div className="p-6 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-xl" style={{ boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.15)' }}>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-white text-lg font-semibold">API Calls</h3>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  className="h-5 w-5 text-white/70"
                 >
-                  <Link href="/pricing" className="flex items-center gap-2">
-                    <SparklesIcon className="h-4 w-4 text-white" />
-                    Upgrade
-                  </Link>
-                </Button>
-              )}
+                  <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                </svg>
+              </div>
+              <div className="text-5xl font-bold text-white">127</div>
+              <div className="mt-2 text-xs text-white/60">Last 30 days</div>
             </div>
           </div>
 
           {/* Available Integrations Section (Glassmorphic Style) */}
-          <div className="w-80 p-6 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-xl">
+          <div className="p-6 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-xl" style={{ boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.15)' }}>
             <h3 className="text-white text-xl font-bold mb-6">Available Integrations</h3>
             <div className="space-y-2">
               {availableServices.map(({ service, label, icon }) => (
@@ -296,7 +319,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
 
           {/* Locked Integrations Section (Glassmorphic Style) */}
           {lockedServices.length > 0 && (
-            <div className="w-80 p-6 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-xl opacity-80">
+            <div className="p-6 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-xl opacity-80" style={{ boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.15)' }}>
               <h3 className="text-white text-xl font-bold mb-6">Upgrade to Unlock</h3>
               <div className="space-y-2">
                 {lockedServices.map(({ service, label, icon }) => (
