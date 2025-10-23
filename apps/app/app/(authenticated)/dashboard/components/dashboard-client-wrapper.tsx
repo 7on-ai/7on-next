@@ -7,6 +7,7 @@ import { Button } from "@repo/design-system/components/ui/button";
 import { Github, Linkedin, Sparkles, Loader2, Check } from "lucide-react";
 import { useSubscription } from "@repo/auth/hooks/use-subscription";
 import type { SubscriptionTier } from "@repo/auth/client";
+import { GL } from "@/components/gl";
 
 /* ----------------------------- Icon components ---------------------------- */
 const GoogleIcon = () => (
@@ -135,6 +136,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
   const [toast, setToast] = useState<Toast | null>(null);
   const [stats, setStats] = useState<{ activeConnections: number }>({ activeConnections: 0 });
   const [loadingConnect, setLoadingConnect] = useState<string | null>(null);
+  const [hovering, setHovering] = useState(false);
 
   const services = [
     { service: "google" as const, label: "Google", icon: <GoogleIcon /> },
@@ -216,141 +218,151 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
   };
 
   return (
-    <div className="w-full min-h-screen p-6 bg-gradient-to-br from-white via-white/60 to-white/40 dark:from-[#07070a] dark:via-[#0b0d12] dark:to-[#121418] transition-colors duration-500">
-      <div className="max-w-7xl mx-auto">
-        {/* Header / Logo */}
-        <div className="mb-6 flex items-center justify-center">
-          <img 
-            src="/workspaces/7on-next/apps/app/app/logo.png" 
-            alt="Logo" 
-            className="h-12 w-12 object-contain"
-          />
-        </div>
+    <>
+      {/* GL Background */}
+      <GL hovering={hovering} />
+      
+      {/* Content Layer */}
+      <div className="relative w-full min-h-screen p-6 transition-colors duration-500">
+        <div className="max-w-7xl mx-auto relative z-10">
+          {/* Header / Logo */}
+          <div className="mb-6 flex items-center justify-center">
+            <img 
+              src="/logo.png" 
+              alt="Logo" 
+              className="h-12 w-12 object-contain"
+            />
+          </div>
 
-        {/* Three Cards */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Card 1: Active Connections + Current Plan */}
-          <div
-            className="relative p-6 rounded-2xl bg-white/60 dark:bg-white/5 backdrop-blur-xl border border-white/20 dark:border-white/6 shadow-[0_12px_40px_rgba(2,6,23,0.12)] dark:shadow-[0_8px_30px_rgba(6,8,20,0.6)] transition-all"
-            style={{ boxShadow: "inset 0 -1px 0 rgba(255,255,255,0.02)" }}
+          {/* Three Cards - Glass Morphism Effect */}
+          <div 
+            className="grid grid-cols-1 lg:grid-cols-3 gap-6"
+            onMouseEnter={() => setHovering(true)}
+            onMouseLeave={() => setHovering(false)}
           >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-slate-800 dark:text-slate-200 text-lg font-semibold">Active Connections</h3>
-            </div>
+            {/* Card 1: Active Connections + Current Plan */}
+            <div
+              className="relative p-6 rounded-2xl bg-white/30 dark:bg-white/5 backdrop-blur-lg border border-white/30 dark:border-white/10 shadow-[0_8px_32px_rgba(2,6,23,0.1)] dark:shadow-[0_8px_32px_rgba(6,8,20,0.4)] transition-all hover:bg-white/40 dark:hover:bg-white/8"
+              style={{ boxShadow: "inset 0 -1px 0 rgba(255,255,255,0.1)" }}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-slate-800 dark:text-slate-200 text-lg font-semibold">Active Connections</h3>
+              </div>
 
-            <div className="mb-6">
-              <div className="text-4xl md:text-5xl font-extrabold text-[#FF6B5B] dark:text-[#8BE0FF]">{stats.activeConnections}</div>
-              <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-[#FF6B5B]/40 to-transparent mt-4 rounded-full" />
-            </div>
+              <div className="mb-6">
+                <div className="text-4xl md:text-5xl font-extrabold text-[#FF6B5B] dark:text-[#8BE0FF]">{stats.activeConnections}</div>
+                <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-[#FF6B5B]/40 to-transparent mt-4 rounded-full" />
+              </div>
 
-            <div className="w-full h-px bg-slate-200/40 dark:bg-slate-700/40 my-4" />
+              <div className="w-full h-px bg-slate-200/40 dark:bg-slate-700/40 my-4" />
 
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="text-slate-700 dark:text-slate-200 text-lg font-semibold">Current Plan</h4>
-                <div className="mt-1 text-4xl font-bold text-slate-900 dark:text-white">{currentTier}</div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-slate-700 dark:text-slate-200 text-lg font-semibold">Current Plan</h4>
+                  <div className="mt-1 text-4xl font-bold text-slate-900 dark:text-white">{currentTier}</div>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Card 2: Available Integrations */}
-          <div className="p-6 rounded-2xl bg-white/60 dark:bg-white/5 backdrop-blur-xl border border-white/20 dark:border-white/6 shadow-[0_12px_40px_rgba(2,6,23,0.08)] transition-all">
-            <h3 className="text-slate-800 dark:text-slate-200 text-lg font-bold mb-6">Available Integrations</h3>
-
-            <div className="space-y-3">
-              {availableServices.map(({ service, label, icon }) => {
-                const loading = loadingConnect === service;
-                return (
-                  <button
-                    aria-label={`Connect ${label}`}
-                    key={service}
-                    onClick={() => {
-                      handleConnect(service, false);
-                      showToast(`Connecting to ${label}...`);
-                    }}
-                    className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl transition transform hover:scale-[1.01] hover:shadow-lg border border-slate-200/60 dark:border-slate-700/40 bg-white/40 dark:bg-white/2"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-white/30 dark:bg-white/5">
-                        {icon}
-                      </div>
-                      <div className="text-sm font-medium text-slate-800 dark:text-slate-100">Connect {label}</div>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      {loading ? <Loader2 className="h-4 w-4 animate-spin text-slate-600 dark:text-slate-300" /> : <svg className="h-4 w-4 text-slate-500 dark:text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Card 3: Upgrade to Unlock */}
-          {lockedServices.length > 0 && (
-            <div className="p-6 rounded-2xl bg-white/60 dark:bg-white/5 backdrop-blur-xl border border-white/20 dark:border-white/6 shadow-[0_12px_40px_rgba(2,6,23,0.08)]">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-slate-800 dark:text-slate-200 text-lg font-bold">Upgrade to Unlock</h3>
-                {isFree && (
-                  <Button asChild size="sm" className="rounded-xl px-4 py-2 !bg-gradient-to-r from-[#FF6B5B] to-[#D14030] text-white shadow-[0_10px_30px_rgba(0,209,255,0.14)] hover:opacity-95">
-                    <Link href="/pricing" className="flex items-center gap-2">
-                      <Sparkles className="h-4 w-4" />
-                      Upgrade
-                    </Link>
-                  </Button>
-                )}
-              </div>
+            {/* Card 2: Available Integrations */}
+            <div className="p-6 rounded-2xl bg-white/30 dark:bg-white/5 backdrop-blur-lg border border-white/30 dark:border-white/10 shadow-[0_8px_32px_rgba(2,6,23,0.08)] transition-all hover:bg-white/40 dark:hover:bg-white/8">
+              <h3 className="text-slate-800 dark:text-slate-200 text-lg font-bold mb-6">Available Integrations</h3>
 
               <div className="space-y-3">
-                {lockedServices.map(({ service, label, icon }) => (
-                  <div
-                    key={service}
-                    className="flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-200 border border-slate-200/50 dark:border-slate-700/40 bg-white/30 dark:bg-white/3 cursor-not-allowed"
-                  >
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg opacity-80">{icon}</div>
-                    <span className="text-sm text-slate-600 dark:text-slate-300 flex-1">{label}</span>
-                    <svg className="h-4 w-4 text-slate-400 dark:text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-                  </div>
-                ))}
-              </div>
+                {availableServices.map(({ service, label, icon }) => {
+                  const loading = loadingConnect === service;
+                  return (
+                    <button
+                      aria-label={`Connect ${label}`}
+                      key={service}
+                      onClick={() => {
+                        handleConnect(service, false);
+                        showToast(`Connecting to ${label}...`);
+                      }}
+                      className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl transition transform hover:scale-[1.01] hover:shadow-lg border border-slate-200/40 dark:border-slate-700/30 bg-white/30 dark:bg-white/5 backdrop-blur-sm"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-white/30 dark:bg-white/5">
+                          {icon}
+                        </div>
+                        <div className="text-sm font-medium text-slate-800 dark:text-slate-100">Connect {label}</div>
+                      </div>
 
-              <div className="mt-6">
-                <div className="text-sm text-slate-500 dark:text-slate-400 mb-3">Unlock more integrations and powerful AI features by upgrading your plan.</div>
+                      <div className="flex items-center gap-3">
+                        {loading ? <Loader2 className="h-4 w-4 animate-spin text-slate-600 dark:text-slate-300" /> : <svg className="h-4 w-4 text-slate-500 dark:text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Card 3: Upgrade to Unlock */}
+            {lockedServices.length > 0 && (
+              <div className="p-6 rounded-2xl bg-white/30 dark:bg-white/5 backdrop-blur-lg border border-white/30 dark:border-white/10 shadow-[0_8px_32px_rgba(2,6,23,0.08)] hover:bg-white/40 dark:hover:bg-white/8 transition-all">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-slate-800 dark:text-slate-200 text-lg font-bold">Upgrade to Unlock</h3>
+                  {isFree && (
+                    <Button asChild size="sm" className="rounded-xl px-4 py-2 !bg-gradient-to-r from-[#FF6B5B] to-[#D14030] text-white shadow-[0_10px_30px_rgba(0,209,255,0.14)] hover:opacity-95">
+                      <Link href="/pricing" className="flex items-center gap-2">
+                        <Sparkles className="h-4 w-4" />
+                        Upgrade
+                      </Link>
+                    </Button>
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  {lockedServices.map(({ service, label, icon }) => (
+                    <div
+                      key={service}
+                      className="flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-200 border border-slate-200/40 dark:border-slate-700/30 bg-white/20 dark:bg-white/3 cursor-not-allowed"
+                    >
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg opacity-80">{icon}</div>
+                      <span className="text-sm text-slate-600 dark:text-slate-300 flex-1">{label}</span>
+                      <svg className="h-4 w-4 text-slate-400 dark:text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-6">
+                  <div className="text-sm text-slate-500 dark:text-slate-400 mb-3">Unlock more integrations and powerful AI features by upgrading your plan.</div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Toast Notification */}
+          {toast && (
+            <div
+              aria-live="polite"
+              className={`fixed z-50 left-1/2 -translate-x-1/2 top-8 transform transition-all duration-400 ${toast.visible ? "opacity-100 translate-y-0 scale-100" : "opacity-0 -translate-y-8 scale-95"}`}
+            >
+              <div className="relative overflow-hidden rounded-2xl bg-white/90 dark:bg-[#0b0d12]/90 backdrop-blur-lg border border-slate-200/40 dark:border-slate-700/40 px-5 py-3 shadow-2xl">
+                <div className="flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-full bg-green-100/90 dark:bg-green-900/30 flex items-center justify-center transition-transform ${toast.showIcon ? "scale-100" : "scale-75"}`}>
+                    <Check className="w-4 h-4 text-green-600 dark:text-green-300" />
+                  </div>
+                  <div className="text-sm text-slate-900 dark:text-slate-100 font-medium">{toast.message}</div>
+                </div>
+                <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-slate-200/30 dark:bg-slate-700/30">
+                  <div
+                    className="h-full bg-gradient-to-r from-green-400 to-green-600"
+                    style={{ animation: toast.visible ? "progressBar 2.5s linear forwards" : "none", width: toast.visible ? "100%" : "0%" }}
+                  />
+                </div>
               </div>
             </div>
           )}
+
+          <style jsx>{`
+            @keyframes progressBar {
+              0% { width: 100%; }
+              100% { width: 0%; }
+            }
+          `}</style>
         </div>
-
-        {/* Toast Notification */}
-        {toast && (
-          <div
-            aria-live="polite"
-            className={`fixed z-50 left-1/2 -translate-x-1/2 top-8 transform transition-all duration-400 ${toast.visible ? "opacity-100 translate-y-0 scale-100" : "opacity-0 -translate-y-8 scale-95"}`}
-          >
-            <div className="relative overflow-hidden rounded-2xl bg-white/90 dark:bg-[#0b0d12]/90 backdrop-blur-lg border border-slate-200/40 dark:border-slate-700/40 px-5 py-3 shadow-2xl">
-              <div className="flex items-center gap-3">
-                <div className={`w-8 h-8 rounded-full bg-green-100/90 dark:bg-green-900/30 flex items-center justify-center transition-transform ${toast.showIcon ? "scale-100" : "scale-75"}`}>
-                  <Check className="w-4 h-4 text-green-600 dark:text-green-300" />
-                </div>
-                <div className="text-sm text-slate-900 dark:text-slate-100 font-medium">{toast.message}</div>
-              </div>
-              <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-slate-200/30 dark:bg-slate-700/30">
-                <div
-                  className="h-full bg-gradient-to-r from-green-400 to-green-600"
-                  style={{ animation: toast.visible ? "progressBar 2.5s linear forwards" : "none", width: toast.visible ? "100%" : "0%" }}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
-        <style jsx>{`
-          @keyframes progressBar {
-            0% { width: 100%; }
-            100% { width: 0%; }
-          }
-        `}</style>
       </div>
-    </div>
+    </>
   );
 }
