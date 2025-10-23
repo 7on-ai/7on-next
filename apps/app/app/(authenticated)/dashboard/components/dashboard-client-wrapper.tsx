@@ -239,18 +239,6 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
   return (
     <div className="w-full min-h-screen p-6 bg-gradient-to-br from-white via-white/60 to-white/40 dark:from-[#07070a] dark:via-[#0b0d12] dark:to-[#121418] transition-colors duration-500">
       <div className="max-w-7xl mx-auto">
-        {/* Header / Breadcrumb */}
-        <div className="mb-6 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-md bg-gradient-to-br from-[#00D1FF] to-[#7A5FFF] p-[2px] shadow-[0_6px_18px_rgba(122,95,255,0.12)]">
-              <div className="h-full w-full bg-white/10 backdrop-blur-sm rounded-sm flex items-center justify-center text-xs font-bold text-white/90">S</div>
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Dashboard</h2>
-              <div className="text-xs text-slate-500 dark:text-slate-400">Overview</div>
-            </div>
-          </div>
-        </div>
 
         {/* Three Cards (kept layout) */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -264,17 +252,8 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
               <h3 className="text-slate-800 dark:text-slate-200 text-lg font-semibold">Active Connections</h3>
             </div>
 
-            <div className="relative mb-6">
-              {/* วงกลมอยู่ด้านหลัง */}
-              <div className="absolute right-0 -top-4 opacity-90 pointer-events-none">
-                <div className="relative w-32 h-32">
-                  <div className="absolute inset-0 rounded-full blur-2xl animate-pulse-slow" style={{ boxShadow: "0 0 40px 8px rgba(0,209,255,0.08)" }} />
-                  <div className="absolute inset-2 rounded-full bg-gradient-to-br from-[#FF6B5B] to-[#D14030] opacity-10" />
-                </div>
-              </div>
-              
-              {/* ตัวเลขอยู่ด้านหน้า */}
-              <div className="relative z-10 text-4xl md:text-5xl font-extrabold text-[#FF6B5B] dark:text-[#8BE0FF]">{stats.activeConnections}</div>
+            <div className="mb-6">
+              <div className="text-4xl md:text-5xl font-extrabold text-[#FF6B5B] dark:text-[#8BE0FF]">{stats.activeConnections}</div>
               <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-[#FF6B5B]/40 to-transparent mt-4 rounded-full" />
             </div>
 
@@ -286,6 +265,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
                 <div className="mt-1 text-4xl font-bold text-slate-900 dark:text-white">{currentTier}</div>
               </div>
             </div>
+
           </div>
 
           {/* Card 2: Available Integrations */}
