@@ -264,8 +264,17 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
               <h3 className="text-slate-800 dark:text-slate-200 text-lg font-semibold">Active Connections</h3>
             </div>
 
-            <div className="mb-6">
-              <div className="text-4xl md:text-5xl font-extrabold text-[#FF6B5B] dark:text-[#8BE0FF]">{stats.activeConnections}</div>
+            <div className="relative mb-6">
+              {/* วงกลมอยู่ด้านหลัง */}
+              <div className="absolute right-0 -top-4 opacity-90 pointer-events-none">
+                <div className="relative w-32 h-32">
+                  <div className="absolute inset-0 rounded-full blur-2xl animate-pulse-slow" style={{ boxShadow: "0 0 40px 8px rgba(0,209,255,0.08)" }} />
+                  <div className="absolute inset-2 rounded-full bg-gradient-to-br from-[#FF6B5B] to-[#D14030] opacity-10" />
+                </div>
+              </div>
+              
+              {/* ตัวเลขอยู่ด้านหน้า */}
+              <div className="relative z-10 text-4xl md:text-5xl font-extrabold text-[#FF6B5B] dark:text-[#8BE0FF]">{stats.activeConnections}</div>
               <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-[#FF6B5B]/40 to-transparent mt-4 rounded-full" />
             </div>
 
@@ -275,15 +284,6 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
               <div>
                 <h4 className="text-slate-700 dark:text-slate-200 text-lg font-semibold">Current Plan</h4>
                 <div className="mt-1 text-4xl font-bold text-slate-900 dark:text-white">{currentTier}</div>
-              </div>
-
-            </div>
-
-            {/* subtle agent pulse */}
-            <div className="absolute -right-4 -top-6 opacity-90">
-              <div className="relative w-20 h-20">
-                <div className="absolute inset-0 rounded-full blur-2xl animate-pulse-slow" style={{ boxShadow: "0 0 40px 8px rgba(0,209,255,0.08)" }} />
-                <div className="absolute inset-2 rounded-full bg-gradient-to-br from-[#FF6B5B] to-[#D14030] opacity-10" />
               </div>
             </div>
           </div>
@@ -328,7 +328,19 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
             <div
               className="p-6 rounded-2xl bg-white/60 dark:bg-white/5 backdrop-blur-xl border border-white/20 dark:border-white/6 shadow-[0_12px_40px_rgba(2,6,23,0.08)]"
             >
-              <h3 className="text-slate-800 dark:text-slate-200 text-lg font-bold mb-6">Unlock</h3>
+
+              <div className="flex flex-col items-end gap-3">
+                {isFree ? (
+                  <Button asChild size="sm" className="rounded-xl px-4 py-2 !bg-gradient-to-r from-[#FF6B5B] to-[#D14030] text-white shadow-[0_10px_30px_rgba(0,209,255,0.14)] hover:opacity-95">
+                    <Link href="/pricing" className="flex items-center gap-2">
+                      <SparklesIcon className="h-4 w-4" />
+                      Upgrade to Unlock
+                    </Link>
+                  </Button>
+                ) : (
+                  <div className="text-sm text-slate-500 dark:text-slate-400">You're on a premium tier</div>
+                )}
+              </div>
 
               <div className="space-y-3">
                 {lockedServices.map(({ service, label, icon }) => (
@@ -345,18 +357,6 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
 
               <div className="mt-6">
                 <div className="text-sm text-slate-500 dark:text-slate-400 mb-3">Unlock more integrations and powerful AI features by upgrading your plan.</div>
-              <div className="flex flex-col items-end gap-3">
-                {isFree ? (
-                  <Button asChild size="sm" className="rounded-xl px-4 py-2 !bg-gradient-to-r from-[#FF6B5B] to-[#D14030] text-white shadow-[0_10px_30px_rgba(0,209,255,0.14)] hover:opacity-95">
-                    <Link href="/pricing" className="flex items-center gap-2">
-                      <SparklesIcon className="h-4 w-4" />
-                      Upgrade
-                    </Link>
-                  </Button>
-                ) : (
-                  <div className="text-sm text-slate-500 dark:text-slate-400">You're on a premium tier</div>
-                )}
-              </div>
               </div>
             </div>
           )}
