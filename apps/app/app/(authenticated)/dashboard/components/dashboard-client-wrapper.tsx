@@ -272,37 +272,47 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
 
 
             {/* Card 2: Available Integrations */}
-            <div className="p-6 rounded-2xl bg-white/20 dark:bg-white/3 backdrop-blur-lg border border-white/40 dark:border-white/20 shadow-[0_8px_32px_rgba(2,6,23,0.08)] transition-all hover:bg-white/30 dark:hover:bg-white/5">
-              <h3 className="text-slate-800 dark:text-slate-200 text-lg font-bold mb-6">Available Integrations</h3>
-
-              <div className="space-y-3">
-                {availableServices.map(({ service, label, icon }) => {
-                  const loading = loadingConnect === service;
-                  return (
-                    <button
-                      aria-label={`Connect ${label}`}
-                      key={service}
-                      onClick={() => {
-                        handleConnect(service, false);
-                        showToast(`Connecting to ${label}...`);
-                      }}
-                      className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl transition transform hover:scale-[1.01] hover:shadow-lg border border-slate-200/40 dark:border-slate-700/30 bg-white/30 dark:bg-white/5 backdrop-blur-sm"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-white/30 dark:bg-white/5">
-                          {icon}
-                        </div>
-                        <div className="text-sm font-medium text-slate-800 dark:text-slate-100">Connect {label}</div>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        {loading ? <Loader2 className="h-4 w-4 animate-spin text-slate-600 dark:text-slate-300" /> : <svg className="h-4 w-4 text-slate-500 dark:text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+<div className="space-y-6">
+  <h3 className="text-slate-100 text-lg font-bold">Available Integrations</h3>
+  <div className="space-y-3">
+    {availableServices.map(({ service, label, icon }) => {
+      const loading = loadingConnect === service;
+      return (
+        <button
+          key={service}
+          onClick={() => {
+            handleConnect(service, false);
+            showToast(`Connecting to ${label}...`);
+          }}
+          className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-white/10 bg-white/10 hover:bg-white/20 backdrop-blur-sm transition transform hover:scale-[1.01]"
+        >
+          <div className="flex items-center gap-3">
+            <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-white/20">
+              {icon}
             </div>
+            <div className="text-sm font-medium text-white">Connect {label}</div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin text-white/70" />
+            ) : (
+              <svg
+                className="h-4 w-4 text-white/70"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            )}
+          </div>
+        </button>
+      );
+    })}
+  </div>
+</div>
 
             {/* Card 3: Upgrade to Unlock */}
             {lockedServices.length > 0 && (
