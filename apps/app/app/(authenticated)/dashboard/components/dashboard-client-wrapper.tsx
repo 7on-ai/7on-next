@@ -4,20 +4,9 @@ import React, { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@repo/design-system/components/ui/button";
-import { GithubIcon, Linkedin, SparklesIcon, Loader2, Check } from "lucide-react";
+import { Github, Linkedin, Sparkles, Loader2, Check } from "lucide-react";
 import { useSubscription } from "@repo/auth/hooks/use-subscription";
 import type { SubscriptionTier } from "@repo/auth/client";
-
-/**
- * DashboardClientWrapper
- * - Redesigned for a modern / futuristic "Sunday AI" look
- * - Compatible with dark & light mode (Tailwind `dark:` classes)
- * - Keeps logic from original: OAuth flows, stats fetch, toast, tier handling
- *
- * Notes:
- * - Assumes Tailwind + next-forge theme integration (class-based dark mode)
- * - Uses soft glassmorphism + cyan->violet accent gradient
- */
 
 /* ----------------------------- Icon components ---------------------------- */
 const GoogleIcon = () => (
@@ -143,15 +132,13 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
   const { tier, isFree } = subscription ?? { tier: initialTier, isFree: initialTier === "FREE" };
   const currentTier = (tier || initialTier) as SubscriptionTier;
 
-  // state
   const [toast, setToast] = useState<Toast | null>(null);
   const [stats, setStats] = useState<{ activeConnections: number }>({ activeConnections: 0 });
   const [loadingConnect, setLoadingConnect] = useState<string | null>(null);
 
-  // services
   const services = [
     { service: "google" as const, label: "Google", icon: <GoogleIcon /> },
-    { service: "github" as const, label: "GitHub", icon: <GithubIcon className="h-5 w-5" /> },
+    { service: "github" as const, label: "GitHub", icon: <Github className="h-5 w-5" /> },
     { service: "spotify" as const, label: "Spotify", icon: <SpotifyIcon /> },
     { service: "discord" as const, label: "Discord", icon: <DiscordIcon /> },
     { service: "linkedin" as const, label: "LinkedIn", icon: <LinkedInIcon /> },
@@ -160,11 +147,9 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
   const availableServices = services.filter((s) => isFeatureAvailable(s.service, currentTier));
   const lockedServices = services.filter((s) => !isFeatureAvailable(s.service, currentTier));
 
-  /* ----------------------------- Toast Helpers ---------------------------- */
   const showToast = (message: string) => {
     const newToast: Toast = { id: Date.now(), message, visible: true, showIcon: false };
     setToast(newToast);
-    // show icon after a short delay for animation
     setTimeout(() => setToast((prev) => (prev ? { ...prev, showIcon: true } : null)), 180);
   };
 
@@ -177,7 +162,6 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
     return () => clearTimeout(t);
   }, [toast]);
 
-  /* ----------------------------- URL Params ------------------------------- */
   useEffect(() => {
     const connected = searchParams.get("connected");
     const status = searchParams.get("status");
@@ -190,10 +174,8 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
       showToast(`❌ Connection failed: ${decodeURIComponent(error)}`);
       clearUrlParams(["error", "timestamp"]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams?.toString()]);
 
-  /* ------------------------------- Stats --------------------------------- */
   useEffect(() => {
     const fetchStats = async () => {
       if (!userId) return;
@@ -210,7 +192,6 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
     fetchStats();
   }, [userId]);
 
-  /* ----------------------------- Connect Flow ---------------------------- */
   const handleConnect = async (service: keyof typeof CLIENT_IDS, isLocked: boolean) => {
     if (!userId) {
       showToast("⚠️ You must be signed in to connect providers.");
@@ -224,7 +205,6 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
       setLoadingConnect(service);
       const state = createOAuthState(userId, service);
       const authUrl = buildAuthorizationUrl(service, state);
-      // small UX delay for animation
       setTimeout(() => {
         window.location.href = authUrl;
       }, 250);
@@ -235,32 +215,24 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
     }
   };
 
-  /* ------------------------------- Layout -------------------------------- */
   return (
     <div className="w-full min-h-screen p-6 bg-gradient-to-br from-white via-white/60 to-white/40 dark:from-[#07070a] dark:via-[#0b0d12] dark:to-[#121418] transition-colors duration-500">
       <div className="max-w-7xl mx-auto">
-        {/* Header / Breadcrumb */}
-        <div className="mb-6 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-md bg-gradient-to-br from-[#00D1FF] to-[#7A5FFF] p-[2px] shadow-[0_6px_18px_rgba(122,95,255,0.12)]">
-              <div className="h-full w-full bg-white/10 backdrop-blur-sm rounded-sm flex items-center justify-center overflow-hidden">
-                <img 
-                  src="/workspaces/7on-next/apps/app/app/logo.png" 
-                  alt="Logo" 
-                  className="h-6 w-6 object-contain"
-                />
-              </div>
-            </div>
-          </div>
+        {/* Header / Logo */}
+        <div className="mb-6 flex items-center justify-center">
+          <img 
+            src="/workspaces/7on-next/apps/app/app/logo.png" 
+            alt="Logo" 
+            className="h-12 w-12 object-contain"
+          />
         </div>
 
-        {/* Three Cards (kept layout) */}
+        {/* Three Cards */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Card 1: Active Connections + Current Plan */}
           <div
             className="relative p-6 rounded-2xl bg-white/60 dark:bg-white/5 backdrop-blur-xl border border-white/20 dark:border-white/6 shadow-[0_12px_40px_rgba(2,6,23,0.12)] dark:shadow-[0_8px_30px_rgba(6,8,20,0.6)] transition-all"
             style={{ boxShadow: "inset 0 -1px 0 rgba(255,255,255,0.02)" }}
-            aria-hidden={false}
           >
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-slate-800 dark:text-slate-200 text-lg font-semibold">Active Connections</h3>
@@ -279,13 +251,10 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
                 <div className="mt-1 text-4xl font-bold text-slate-900 dark:text-white">{currentTier}</div>
               </div>
             </div>
-
           </div>
 
           {/* Card 2: Available Integrations */}
-          <div
-            className="p-6 rounded-2xl bg-white/60 dark:bg-white/5 backdrop-blur-xl border border-white/20 dark:border-white/6 shadow-[0_12px_40px_rgba(2,6,23,0.08)] transition-all"
-          >
+          <div className="p-6 rounded-2xl bg-white/60 dark:bg-white/5 backdrop-blur-xl border border-white/20 dark:border-white/6 shadow-[0_12px_40px_rgba(2,6,23,0.08)] transition-all">
             <h3 className="text-slate-800 dark:text-slate-200 text-lg font-bold mb-6">Available Integrations</h3>
 
             <div className="space-y-3">
@@ -319,20 +288,16 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
 
           {/* Card 3: Upgrade to Unlock */}
           {lockedServices.length > 0 && (
-            <div
-              className="p-6 rounded-2xl bg-white/60 dark:bg-white/5 backdrop-blur-xl border border-white/20 dark:border-white/6 shadow-[0_12px_40px_rgba(2,6,23,0.08)]"
-            >
-
-              <div className="flex flex-col items-end gap-3">
-                {isFree ? (
+            <div className="p-6 rounded-2xl bg-white/60 dark:bg-white/5 backdrop-blur-xl border border-white/20 dark:border-white/6 shadow-[0_12px_40px_rgba(2,6,23,0.08)]">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-slate-800 dark:text-slate-200 text-lg font-bold">Upgrade to Unlock</h3>
+                {isFree && (
                   <Button asChild size="sm" className="rounded-xl px-4 py-2 !bg-gradient-to-r from-[#FF6B5B] to-[#D14030] text-white shadow-[0_10px_30px_rgba(0,209,255,0.14)] hover:opacity-95">
                     <Link href="/pricing" className="flex items-center gap-2">
-                      <SparklesIcon className="h-4 w-4" />
-                      Upgrade to Unlock
+                      <Sparkles className="h-4 w-4" />
+                      Upgrade
                     </Link>
                   </Button>
-                ) : (
-                  <div className="text-sm text-slate-500 dark:text-slate-400">You're on a premium tier</div>
                 )}
               </div>
 
@@ -356,7 +321,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
           )}
         </div>
 
-        {/* Toast Notification (floating glass) */}
+        {/* Toast Notification */}
         {toast && (
           <div
             aria-live="polite"
@@ -381,32 +346,8 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
 
         <style jsx>{`
           @keyframes progressBar {
-            0% {
-              width: 100%;
-            }
-            100% {
-              width: 0%;
-            }
-          }
-
-          /* slower pulse for agent glow */
-          @keyframes pulse-slow {
-            0% {
-              transform: scale(0.95);
-              opacity: 0.7;
-            }
-            50% {
-              transform: scale(1);
-              opacity: 0.95;
-            }
-            100% {
-              transform: scale(0.95);
-              opacity: 0.7;
-            }
-          }
-
-          .animate-pulse-slow {
-            animation: pulse-slow 2.6s ease-in-out infinite;
+            0% { width: 100%; }
+            100% { width: 0%; }
           }
         `}</style>
       </div>
