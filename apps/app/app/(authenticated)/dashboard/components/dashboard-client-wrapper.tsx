@@ -262,17 +262,11 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
           >
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-slate-800 dark:text-slate-200 text-lg font-semibold">Active Connections</h3>
-              <div className="text-slate-500 dark:text-slate-400">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                  <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
-                </svg>
-              </div>
             </div>
 
             <div className="mb-6">
-              <div className="text-6xl md:text-7xl font-extrabold text-[#00D1FF] dark:text-[#8BE0FF]">{stats.activeConnections}</div>
-              <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-[#00D1FF]/40 to-transparent mt-4 rounded-full" />
+              <div className="text-4xl md:text-5xl font-extrabold text-[#FF6B5B] dark:text-[#8BE0FF]">{stats.activeConnections}</div>
+              <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-[#FF6B5B]/40 to-transparent mt-4 rounded-full" />
             </div>
 
             <div className="w-full h-px bg-slate-200/40 dark:bg-slate-700/40 my-4" />
@@ -285,7 +279,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
 
               <div className="flex flex-col items-end gap-3">
                 {isFree ? (
-                  <Button asChild size="sm" className="rounded-xl px-4 py-2 !bg-gradient-to-r from-[#00D1FF] to-[#7A5FFF] text-white shadow-[0_10px_30px_rgba(0,209,255,0.14)] hover:opacity-95">
+                  <Button asChild size="sm" className="rounded-xl px-4 py-2 !bg-gradient-to-r from-[#FF6B5B] to-[#D14030] text-white shadow-[0_10px_30px_rgba(0,209,255,0.14)] hover:opacity-95">
                     <Link href="/pricing" className="flex items-center gap-2">
                       <SparklesIcon className="h-4 w-4" />
                       Upgrade
@@ -301,7 +295,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
             <div className="absolute -right-4 -top-6 opacity-90">
               <div className="relative w-20 h-20">
                 <div className="absolute inset-0 rounded-full blur-2xl animate-pulse-slow" style={{ boxShadow: "0 0 40px 8px rgba(0,209,255,0.08)" }} />
-                <div className="absolute inset-2 rounded-full bg-gradient-to-br from-[#00D1FF] to-[#7A5FFF] opacity-10" />
+                <div className="absolute inset-2 rounded-full bg-gradient-to-br from-[#FF6B5B] to-[#D14030] opacity-10" />
               </div>
             </div>
           </div>
@@ -346,7 +340,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
             <div
               className="p-6 rounded-2xl bg-white/60 dark:bg-white/5 backdrop-blur-xl border border-white/20 dark:border-white/6 shadow-[0_12px_40px_rgba(2,6,23,0.08)]"
             >
-              <h3 className="text-slate-800 dark:text-slate-200 text-lg font-bold mb-6">Upgrade to Unlock</h3>
+              <h3 className="text-slate-800 dark:text-slate-200 text-lg font-bold mb-6">Unlock</h3>
 
               <div className="space-y-3">
                 {lockedServices.map(({ service, label, icon }) => (
@@ -363,7 +357,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
 
               <div className="mt-6">
                 <div className="text-sm text-slate-500 dark:text-slate-400 mb-3">Unlock more integrations and powerful AI features by upgrading your plan.</div>
-                <Button asChild className="rounded-xl px-4 py-2 !bg-gradient-to-r from-[#00D1FF] to-[#7A5FFF] text-white w-full shadow-[0_12px_40px_rgba(122,95,255,0.12)]">
+                <Button asChild className="rounded-xl px-4 py-2 !bg-gradient-to-r from-[#FF6B5B] to-[#D14030] text-white w-full shadow-[0_12px_40px_rgba(122,95,255,0.12)]">
                   <Link href="/pricing">See Plans</Link>
                 </Button>
               </div>
