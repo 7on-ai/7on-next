@@ -20,9 +20,6 @@ importers:
       commander:
         specifier: ^14.0.0
         version: 14.0.0
-      flag:
-        specifier: ^5.0.1
-        version: 5.0.1(react@19.1.0)
       leva:
         specifier: ^0.10.0
         version: 0.10.0(@types/react@19.1.5)(react@19.1.0)
@@ -51,6 +48,12 @@ importers:
       '@types/node':
         specifier: ^22.15.21
         version: 22.15.21
+      '@types/three':
+        specifier: ^0.180.0
+        version: 0.180.0
+      flag:
+        specifier: ^5.0.1
+        version: 5.0.1(react@19.1.0)
       tsup:
         specifier: ^8.5.0
         version: 8.5.0(jiti@2.4.2)(postcss@8.5.3)(typescript@5.8.3)(yaml@2.7.0)
