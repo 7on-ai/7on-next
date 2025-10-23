@@ -262,7 +262,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
       <h4 className="text-slate-700 dark:text-slate-200 text-lg font-semibold">
         Current Plan
       </h4>
-      <div className="mt-1 text-4xl text-slate-900 dark:text-white">
+      <div className="mt-1 text-4xl font-semibold text-slate-900 dark:text-white">
         {currentTier}
       </div>
     </div>
@@ -270,7 +270,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
 </div>
 
             {/* Card 2: Available Integrations */}
-            <div className="p-6 rounded-2xl bg-white/30 dark:bg-white/5 border border-white/30 dark:border-white/10 shadow-[0_8px_32px_rgba(2,6,23,0.08)] transition-all hover:bg-white/40 dark:hover:bg-white/8">
+            <div className="p-6 rounded-2xl bg-white/30 dark:bg-white/10 border border-white/30 dark:border-white/10 shadow-[0_8px_32px_rgba(2,6,23,0.08)] transition-all hover:bg-white/40 dark:hover:bg-white/8">
               <h3 className="text-slate-800 dark:text-slate-200 text-lg font-bold mb-6">Available Integrations</h3>
 
               <div className="space-y-3">
@@ -304,7 +304,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
 
             {/* Card 3: Upgrade to Unlock */}
             {lockedServices.length > 0 && (
-              <div className="p-6 rounded-2xl bg-white/30 dark:bg-white/5 border border-white/30 dark:border-white/10 shadow-[0_8px_32px_rgba(2,6,23,0.08)] hover:bg-white/40 dark:hover:bg-white/8 transition-all">
+              <div className="p-6 rounded-2xl bg-white/30 dark:bg-white/10 border border-white/30 dark:border-white/10 shadow-[0_8px_32px_rgba(2,6,23,0.08)] hover:bg-white/40 dark:hover:bg-white/8 transition-all">
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-slate-800 dark:text-slate-200 text-lg font-bold">Upgrade to Unlock</h3>
                   {isFree && (
@@ -337,7 +337,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
             )}
           </div>
 
-          {/* Toast Notification */}
+{/* Toast Notification */}
 {toast && (
   <div
     aria-live="polite"
