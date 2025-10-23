@@ -228,7 +228,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
           {/* Header / Logo */}
           <div className="mb-6 flex items-center justify-center">
             <img 
-              src="/logo-main.svg" 
+              src="/main-logo.svg" 
               alt="Logo" 
               className="h-12 w-12 object-contain"
             />
@@ -249,7 +249,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
   </div>
 
   <div className="mb-6 text-center">
-    <div className="text-4xl md:text-5xl font-semibold text-[#FF6B5B] dark:text-[#8bffbb]">
+    <div className="mt-1 text-4xl text-slate-900 dark:text-white">
       {stats.activeConnections}
     </div>
     <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-[#FF6B5B]/40 to-transparent mt-4 rounded-full" />
@@ -262,7 +262,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
       <h4 className="text-slate-700 dark:text-slate-200 text-lg font-semibold">
         Current Plan
       </h4>
-      <div className="mt-1 text-4xl font-bold text-slate-900 dark:text-white">
+      <div className="mt-1 text-4xl text-slate-900 dark:text-white">
         {currentTier}
       </div>
     </div>
