@@ -198,72 +198,17 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
   };
 
   return (
-    <div className="w-full min-h-screen relative overflow-hidden">
-      {/* Gradient Background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-gray-50 via-gray-100 to-gray-50" />
-
-      {/* Main Content Container - Centered */}
-      <div className="relative z-10 flex items-center justify-center min-h-screen p-6">
-        <div className="w-full max-w-6xl space-y-6">
-          {/* Stats Section - Three Cards in Row (Desktop) / Column (Mobile) */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Combined Card: Active Connections + Current Plan */}
-            <div className="lg:col-span-2 p-6 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-xl" style={{ boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.15)' }}>
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-                {/* Active Connections */}
-                <div className="flex-1">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-white text-lg font-semibold">Active Connections</h3>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      className="h-5 w-5 text-white/70"
-                    >
-                      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                      <circle cx="9" cy="7" r="4" />
-                      <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
-                    </svg>
-                  </div>
-                  <div className="text-5xl font-bold text-white">{stats.activeConnections}</div>
-                </div>
-
-                {/* Divider - Hidden on mobile */}
-                <div className="hidden md:block w-px h-16 bg-white/20" />
-
-                {/* Current Plan */}
-                <div className="flex-1">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-white text-lg font-semibold">Current Plan</h3>
-                    <SparklesIcon className="h-5 w-5 text-white/70" />
-                  </div>
-                  <div className="flex items-baseline justify-between">
-                    <div className="text-5xl font-bold text-white">{currentTier}</div>
-                    {isFree && (
-                      <Button
-                        asChild
-                        size="sm"
-                        className="bg-white/20 hover:bg-white/30 text-white border border-white/30 transition-all duration-300 ease-out rounded-xl shadow-md"
-                      >
-                        <Link href="/pricing" className="flex items-center gap-2">
-                          <SparklesIcon className="h-4 w-4 text-white" />
-                          Upgrade
-                        </Link>
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* API Calls Card */}
-            <div className="p-6 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-xl" style={{ boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.15)' }}>
+    <div className="w-full min-h-screen bg-[#fafafa] p-6">
+      <div className="w-full max-w-7xl mx-auto">
+        {/* Three Cards in Row - Equal Height */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          
+          {/* Card 1: Active Connections + Current Plan (Combined) */}
+          <div className="p-6 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-xl" style={{ boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.15)' }}>
+            {/* Active Connections */}
+            <div className="mb-6">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-white text-lg font-semibold">API Calls</h3>
+                <h3 className="text-gray-700 text-lg font-semibold">Active Connections</h3>
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   viewBox="0 0 24 24"
@@ -272,19 +217,46 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth="2"
-                  className="h-5 w-5 text-white/70"
+                  className="h-5 w-5 text-gray-500"
                 >
-                  <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
                 </svg>
               </div>
-              <div className="text-5xl font-bold text-white">127</div>
-              <div className="mt-2 text-xs text-white/60">Last 30 days</div>
+              <div className="text-5xl font-bold text-gray-800">{stats.activeConnections}</div>
+            </div>
+
+            {/* Divider */}
+            <div className="w-full h-px bg-gray-200 my-4" />
+
+            {/* Current Plan */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-gray-700 text-lg font-semibold">Current Plan</h3>
+                <SparklesIcon className="h-5 w-5 text-gray-500" />
+              </div>
+              <div className="flex items-baseline justify-between">
+                <div className="text-5xl font-bold text-gray-800">{currentTier}</div>
+                {isFree && (
+                  <Button
+                    asChild
+                    size="sm"
+                    className="bg-gray-800 hover:bg-gray-900 text-white transition-all duration-300 ease-out rounded-xl shadow-md"
+                  >
+                    <Link href="/pricing" className="flex items-center gap-2">
+                      <SparklesIcon className="h-4 w-4" />
+                      Upgrade
+                    </Link>
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Available Integrations Section (Glassmorphic Style) */}
+          {/* Card 2: Available Integrations */}
           <div className="p-6 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-xl" style={{ boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.15)' }}>
-            <h3 className="text-white text-xl font-bold mb-6">Available Integrations</h3>
+            <h3 className="text-gray-700 text-xl font-bold mb-6">Available Integrations</h3>
             <div className="space-y-2">
               {availableServices.map(({ service, label, icon }) => (
                 <div
@@ -293,14 +265,14 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
                     handleConnect(service, false);
                     showToast(`Connecting to ${label}...`);
                   }}
-                  className="flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-300 ease-out cursor-pointer hover:bg-white/15 hover:scale-[1.02] hover:shadow-lg active:scale-[0.98] border border-white/20"
+                  className="flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-300 ease-out cursor-pointer hover:bg-gray-100 hover:scale-[1.02] hover:shadow-lg active:scale-[0.98] border border-gray-200"
                 >
                   <div className="flex h-8 w-8 items-center justify-center rounded-lg">
                     {icon}
                   </div>
-                  <span className="text-white font-medium text-sm flex-1">Connect {label}</span>
+                  <span className="text-gray-700 font-medium text-sm flex-1">Connect {label}</span>
                   <svg
-                    className="h-4 w-4 text-white/70 transition-transform duration-200 hover:scale-110"
+                    className="h-4 w-4 text-gray-500 transition-transform duration-200 hover:scale-110"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -317,20 +289,20 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
             </div>
           </div>
 
-          {/* Locked Integrations Section (Glassmorphic Style) */}
+          {/* Card 3: Upgrade to Unlock */}
           {lockedServices.length > 0 && (
             <div className="p-6 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-xl opacity-80" style={{ boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.15)' }}>
-              <h3 className="text-white text-xl font-bold mb-6">Upgrade to Unlock</h3>
+              <h3 className="text-gray-700 text-xl font-bold mb-6">Upgrade to Unlock</h3>
               <div className="space-y-2">
                 {lockedServices.map(({ service, label, icon }) => (
                   <div
                     key={service}
-                    className="flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-300 ease-out cursor-not-allowed border border-white/20 bg-white/5"
+                    className="flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-300 ease-out cursor-not-allowed border border-gray-200 bg-gray-50"
                   >
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg opacity-70">{icon}</div>
-                    <span className="text-white/70 font-medium text-sm flex-1">{label}</span>
+                    <span className="text-gray-500 font-medium text-sm flex-1">{label}</span>
                     <svg
-                      className="h-4 w-4 text-white/50"
+                      className="h-4 w-4 text-gray-400"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -347,50 +319,50 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
               </div>
             </div>
           )}
+        </div>
 
-          {/* Toast Notification */}
-          {toast && (
-            <div
-              className={`fixed top-8 left-1/2 -translate-x-1/2 p-4 rounded-2xl bg-white/95 backdrop-blur-xl border border-gray-200 shadow-2xl transition-all duration-500 ease-out transform-gpu z-50 ${
-                toast.visible ? "opacity-100 translate-y-0 scale-100" : "opacity-0 -translate-y-8 scale-95"
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <div
-                  className={`w-8 h-8 rounded-full bg-green-100 flex items-center justify-center transition-all duration-300 ease-out ${
-                    toast.showIcon ? "scale-100 rotate-0" : "scale-0 rotate-180"
+        {/* Toast Notification */}
+        {toast && (
+          <div
+            className={`fixed top-8 left-1/2 -translate-x-1/2 p-4 rounded-2xl bg-white/95 backdrop-blur-xl border border-gray-200 shadow-2xl transition-all duration-500 ease-out transform-gpu z-50 ${
+              toast.visible ? "opacity-100 translate-y-0 scale-100" : "opacity-0 -translate-y-8 scale-95"
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-8 h-8 rounded-full bg-green-100 flex items-center justify-center transition-all duration-300 ease-out ${
+                  toast.showIcon ? "scale-100 rotate-0" : "scale-0 rotate-180"
+                }`}
+              >
+                <Check
+                  className={`w-4 h-4 text-green-600 transition-all duration-200 delay-100 ${
+                    toast.showIcon ? "opacity-100 scale-100" : "opacity-0 scale-50"
                   }`}
-                >
-                  <Check
-                    className={`w-4 h-4 text-green-600 transition-all duration-200 delay-100 ${
-                      toast.showIcon ? "opacity-100 scale-100" : "opacity-0 scale-50"
-                    }`}
-                  />
-                </div>
-                <span className="text-gray-900 font-medium text-sm">{toast.message}</span>
-              </div>
-              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-200 rounded-b-2xl overflow-hidden">
-                <div
-                  className="h-full bg-green-500"
-                  style={{
-                    animation: toast.visible ? "progressBar 2.5s linear" : "none",
-                  }}
                 />
               </div>
+              <span className="text-gray-900 font-medium text-sm">{toast.message}</span>
             </div>
-          )}
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-200 rounded-b-2xl overflow-hidden">
+              <div
+                className="h-full bg-green-500"
+                style={{
+                  animation: toast.visible ? "progressBar 2.5s linear" : "none",
+                }}
+              />
+            </div>
+          </div>
+        )}
 
-          <style jsx>{`
-            @keyframes progressBar {
-              0% {
-                width: 100%;
-              }
-              100% {
-                width: 0%;
-              }
+        <style jsx>{`
+          @keyframes progressBar {
+            0% {
+              width: 100%;
             }
-          `}</style>
-        </div>
+            100% {
+              width: 0%;
+            }
+          }
+        `}</style>
       </div>
     </div>
   );
