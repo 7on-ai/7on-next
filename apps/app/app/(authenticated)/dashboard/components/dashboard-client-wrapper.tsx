@@ -232,8 +232,8 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
               alt="Logo" 
               className="h-12 w-12 object-contain"
             />
-            <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-[#FF6B5B]/40 to-transparent mt-4 rounded-full" />
           </div>
+          <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-[#FF6B5B]/40 to-transparent mt-4 rounded-full" />
 
           <div 
             className="grid grid-cols-1 lg:grid-cols-3 gap-6"
