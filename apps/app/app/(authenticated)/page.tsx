@@ -49,19 +49,7 @@ export default async function HomePage() {
       },
     });
 
-    // ✅ Trigger auto-provision for new user (non-blocking)
-    const userName = user.firstName || user.username || userEmail?.split('@')[0] || 'User';
-    
-    console.log('🚀 Triggering N8N provision from root page for new user:', dbUser.id);
-
-    // Import dynamically to avoid blocking
-    import('./provision-helper-root')
-      .then(({ triggerProvision }) => {
-        triggerProvision(dbUser.id, userName, dbUser.email);
-      })
-      .catch((err) => {
-        console.error('❌ Failed to trigger provision:', err);
-      });
+    console.log('🚀 New user created, skipping auto-provision trigger (provision-helper-root removed)');
   } else {
     // Check if existing user needs provisioning
     const needsProvisioning = 
@@ -72,18 +60,7 @@ export default async function HomePage() {
       );
 
     if (needsProvisioning) {
-      console.log('🔄 Existing user needs provisioning:', dbUser.id, dbUser.northflankProjectStatus);
-
-      const userName = user.firstName || user.username || userEmail?.split('@')[0] || 'User';
-
-      // Import dynamically to avoid blocking
-      import('./provision-helper-root')
-        .then(({ triggerProvision }) => {
-          triggerProvision(dbUser.id, userName, dbUser.email);
-        })
-        .catch((err) => {
-          console.error('❌ Failed to trigger provision:', err);
-        });
+      console.log('🔄 Existing user needs provisioning, skipping trigger (provision-helper-root removed):', dbUser.id, dbUser.northflankProjectStatus);
     }
   }
 

@@ -45,7 +45,7 @@ export default async function DashboardPage() {
       console.log('🚀 Starting Northflank provisioning for user:', dbUser.id);
       
       // ⚠️ IMPORTANT: Use dynamic import to avoid blocking page load
-      import('./provision-helper').then(({ provisionNorthflank }) => {
+      import('../../provision-helper').then(({ provisionNorthflank }) => {
         provisionNorthflank({
           userId: dbUser.id,
           userName: user.firstName || user.username || userEmail.split('@')[0],
@@ -64,7 +64,7 @@ export default async function DashboardPage() {
     if (!dbUser.northflankProjectId && userEmail) {
       console.log('🔄 Existing user without Northflank project, provisioning...');
       
-      import('./provision-helper').then(({ provisionNorthflank }) => {
+      import('../../provision-helper').then(({ provisionNorthflank }) => {
         provisionNorthflank({
           userId: dbUser.id,
           userName: user.firstName || user.username || userEmail.split('@')[0],
