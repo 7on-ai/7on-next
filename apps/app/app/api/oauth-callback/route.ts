@@ -1,6 +1,6 @@
 // app/api/oauth-callback/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { database as db } from '@repo/database';
 
 const CONFIG = {
   AUTH0_DOMAIN: process.env.NEXT_PUBLIC_AUTH0_DOMAIN!,

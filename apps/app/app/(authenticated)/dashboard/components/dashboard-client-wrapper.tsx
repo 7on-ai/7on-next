@@ -232,6 +232,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
               alt="Logo" 
               className="h-12 w-12 object-contain"
             />
+            <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-[#FF6B5B]/40 to-transparent mt-4 rounded-full" />
           </div>
 
           <div 
@@ -251,7 +252,6 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
                 <div className="mt-1 text-4xl text-slate-900 dark:text-white">
                   {stats.activeConnections}
                 </div>
-                <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-[#FF6B5B]/40 to-transparent mt-4 rounded-full" />
               </div>
 
               <div className="w-full h-px bg-slate-200/40 dark:bg-slate-700/40 my-4" />

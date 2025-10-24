@@ -1,6 +1,6 @@
 // app/api/provision-northflank/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { database as db } from '@repo/database';
 
 const NORTHFLANK_API_TOKEN = process.env.NORTHFLANK_API_TOKEN!;
 const WEBHOOK_URL = process.env.WEBHOOK_URL || 'https://your-app.vercel.app/api/setup-webhook';
