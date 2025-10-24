@@ -307,19 +307,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-slate-800 dark:text-slate-200 text-lg font-bold">Upgrade to Unlock</h3>
                   {isFree && (
-<Button
-  asChild
-  size="sm"
-  className="relative rounded-xl px-4 py-2 text-white 
-             border border-transparent 
-             bg-gradient-to-r from-[#FF6B5B] to-[#D14030] 
-             [background-clip:padding-box,border-box] 
-             before:absolute before:inset-0 
-             before:rounded-xl before:p-[1px] 
-             before:bg-gradient-to-r before:from-[#FF6B5B] before:to-[#D14030] 
-             before:-z-10 before:content-[''] 
-             bg-transparent hover:opacity-90 transition-all"
->
+<Button asChild size="sm" className="rounded-xl px-4 py-2 border-2 border-[#FF6B5B] bg-transparent text-white hover:opacity-90 transition">
   <Link href="/pricing" className="flex items-center gap-2">
     <Sparkles className="h-4 w-4" />
     Upgrade
