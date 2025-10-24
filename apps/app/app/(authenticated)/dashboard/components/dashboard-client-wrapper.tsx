@@ -182,10 +182,13 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
     const fetchStats = async () => {
       if (!userId) return;
       try {
-        const response = await fetch(`/api/user/n8n-status?userId=${userId}`);
+        // ✅ Fixed: ใช้ path ที่ถูกต้อง
+        const response = await fetch(`/api/user/n8n-status`);
         if (response.ok) {
           const data = await response.json();
           setStats({ activeConnections: data.injected_providers_count || 0 });
+        } else {
+          console.error('Failed to fetch n8n status:', response.status);
         }
       } catch (e) {
         console.error("Error fetching stats:", e);
@@ -219,13 +222,10 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
 
   return (
     <>
-      {/* GL Background */}
       <GL hovering={hovering} />
       
-      {/* Content Layer */}
       <div className="relative w-full min-h-screen p-6 transition-colors duration-500">
         <div className="max-w-7xl mx-auto relative z-10">
-          {/* Header / Logo */}
           <div className="mb-6 flex items-center justify-center">
             <img 
               src="/main-logo.svg" 
@@ -234,40 +234,39 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
             />
           </div>
 
-          {/* Three Cards - Glass Morphism Effect */}
           <div 
             className="grid grid-cols-1 lg:grid-cols-3 gap-6"
             onMouseEnter={() => setHovering(true)}
             onMouseLeave={() => setHovering(false)}
           >
-{/* Card 1: Active Connections + Current Plan */}
-<div className="relative p-6 rounded-2xl transition-all">
-  <div className="flex items-center justify-center mb-4">
-    <h3 className="text-slate-800 dark:text-slate-200 text-lg font-semibold">
-      Active Connections
-    </h3>
-  </div>
+            {/* Card 1: Active Connections + Current Plan */}
+            <div className="relative p-6 rounded-2xl transition-all">
+              <div className="flex items-center justify-center mb-4">
+                <h3 className="text-slate-800 dark:text-slate-200 text-lg font-semibold">
+                  Active Connections
+                </h3>
+              </div>
 
-  <div className="mb-6 text-center">
-    <div className="mt-1 text-4xl text-slate-900 dark:text-white">
-      {stats.activeConnections}
-    </div>
-    <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-[#FF6B5B]/40 to-transparent mt-4 rounded-full" />
-  </div>
+              <div className="mb-6 text-center">
+                <div className="mt-1 text-4xl text-slate-900 dark:text-white">
+                  {stats.activeConnections}
+                </div>
+                <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-[#FF6B5B]/40 to-transparent mt-4 rounded-full" />
+              </div>
 
-  <div className="w-full h-px bg-slate-200/40 dark:bg-slate-700/40 my-4" />
+              <div className="w-full h-px bg-slate-200/40 dark:bg-slate-700/40 my-4" />
 
-  <div className="flex flex-col items-center justify-center text-center">
-    <div>
-      <h4 className="text-slate-700 dark:text-slate-200 text-lg font-semibold">
-        Current Plan
-      </h4>
-      <div className="mt-1 text-4xl font-semibold text-slate-900 dark:text-white">
-        {currentTier}
-      </div>
-    </div>
-  </div>
-</div>
+              <div className="flex flex-col items-center justify-center text-center">
+                <div>
+                  <h4 className="text-slate-700 dark:text-slate-200 text-lg font-semibold">
+                    Current Plan
+                  </h4>
+                  <div className="mt-1 text-4xl font-semibold text-slate-900 dark:text-white">
+                    {currentTier}
+                  </div>
+                </div>
+              </div>
+            </div>
 
             {/* Card 2: Available Integrations */}
             <div className="p-6 rounded-2xl bg-white/30 dark:bg-white/10 border border-white/30 dark:border-white/10 shadow-[0_8px_32px_rgba(2,6,23,0.08)] transition-all hover:bg-white/40 dark:hover:bg-white/8">
@@ -337,40 +336,51 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
             )}
           </div>
 
-{/* Toast Notification */}
-{toast && (
-  <div
-    aria-live="polite"
-    className={`fixed z-[9999] left-1/2 -translate-x-1/2 top-[env(safe-area-inset-top,1rem)] transform transition-all duration-300 ease-out
-    ${toast.visible ? "opacity-100 translate-y-0 scale-100 pointer-events-auto" : "opacity-0 -translate-y-6 scale-95 pointer-events-none"}`}
-  >
-    <div className="relative overflow-hidden rounded-2xl bg-white/95 dark:bg-[#0b0d12]/90 backdrop-blur-xl border border-slate-200/40 dark:border-slate-700/40 px-5 py-3 shadow-2xl max-w-[90vw] sm:max-w-sm">
-      <div className="flex items-center gap-3">
-        <div
-          className={`w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center transition-transform
-          ${toast.showIcon ? "scale-100" : "scale-75"}`}
-        >
-          <Check className="w-4 h-4 text-green-600 dark:text-green-300" />
-        </div>
-        <div className="text-sm text-slate-900 dark:text-slate-100 font-medium break-words">
-          {toast.message}
+          {/* Toast Notification */}
+          {toast && (
+            <div
+              aria-live="polite"
+              className={`fixed z-[9999] left-1/2 -translate-x-1/2 top-[env(safe-area-inset-top,1rem)] transform transition-all duration-300 ease-out
+              ${toast.visible ? "opacity-100 translate-y-0 scale-100 pointer-events-auto" : "opacity-0 -translate-y-6 scale-95 pointer-events-none"}`}
+            >
+              <div className="relative overflow-hidden rounded-2xl bg-white/95 dark:bg-[#0b0d12]/90 backdrop-blur-xl border border-slate-200/40 dark:border-slate-700/40 px-5 py-3 shadow-2xl max-w-[90vw] sm:max-w-sm">
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center transition-transform
+.showIcon ? "scale-100" : "scale-75"}`}
+                  >
+                    <Check className="w-4 h-4 text-green-600 dark:text-green-300" />
+                  </div>
+                  <div className="text-sm text-slate-900 dark:text-slate-100 font-medium break-words">
+                    {toast.message}
+                  </div>
+                </div>
+
+                {/* Progress Bar */}
+                <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-slate-200/30 dark:bg-slate-700/30">
+                  <div
+                    className="h-full bg-gradient-to-r from-green-400 to-green-600"
+                    style={{
+                      animation: toast.visible ? "progressBar 2.5s linear forwards" : "none",
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Progress Bar */}
-      <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-slate-200/30 dark:bg-slate-700/30">
-        <div
-          className="h-full bg-gradient-to-r from-green-400 to-green-600"
-          style={{
-            animation: toast.visible ? "progressBar 2.5s linear forwards" : "none",
-          }}
-        />
-      </div>
-    </div>
-  </div>
-)}
-        </div>
-      </div>
+      <style jsx global>{`
+        @keyframes progressBar {
+          from {
+            width: 0%;
+          }
+          to {
+            width: 100%;
+          }
+        }
+      `}</style>
     </>
   );
 }

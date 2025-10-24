@@ -1,7 +1,8 @@
 // apps/app/app/api/webhooks/clerk/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { Webhook } from 'svix';
-import { db } from '@/lib/db';
+import { database } from '@repo/database';
+import { log } from '@repo/observability/log';
 
 const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET!;
 
@@ -18,22 +19,29 @@ export async function POST(request: NextRequest) {
     const wh = new Webhook(WEBHOOK_SECRET);
     const event = wh.verify(payload, headers) as any;
 
-    console.log('📥 Clerk webhook received:', event.type);
+    log.info('Clerk webhook received', { type: event.type });
 
     // Handle user.created event
     if (event.type === 'user.created') {
-      const { id: clerkId, email_addresses, first_name, last_name } = event.data;
+      const { 
+        id: clerkId, 
+        email_addresses, 
+        first_name, 
+        last_name,
+        username 
+      } = event.data;
+      
       const email = email_addresses[0]?.email_address;
 
       if (!email) {
-        console.error('❌ No email found for user:', clerkId);
+        log.error('No email found for user', { clerkId });
         return NextResponse.json({ error: 'No email found' }, { status: 400 });
       }
 
-      console.log('✅ Creating user in database:', { clerkId, email });
+      log.info('Creating user in database', { clerkId, email });
 
-      // 1. Create user in Neon database
-      const user = await db.user.create({
+      // Create user in database
+      const user = await database.user.create({
         data: {
           clerkId,
           email,
@@ -43,43 +51,64 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      console.log('✅ User created:', user.id);
+      log.info('User created successfully', { userId: user.id });
 
-      // 2. 🚀 Automatically provision Northflank N8N instance
+      // 🚀 Auto-provision N8N instance
       try {
-        const userName = `${first_name || ''} ${last_name || ''}`.trim() || email.split('@')[0];
+        const userName = `${first_name || ''} ${last_name || ''}`.trim() 
+          || username 
+          || email.split('@')[0];
 
-        console.log('🚀 Provisioning Northflank for user:', user.id);
+        log.info('Starting N8N provisioning', { 
+          userId: user.id, 
+          userName,
+          email 
+        });
 
-        const provisionResponse = await fetch(
-          `${process.env.NEXT_PUBLIC_APP_URL}/api/provision-northflank`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
+        // Call provision API (non-blocking)
+        fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/provision-northflank`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: user.id,
+            userName,
+            userEmail: email,
+          }),
+        }).then(async (response) => {
+          if (response.ok) {
+            const data = await response.json();
+            log.info('N8N provisioning initiated', { 
               userId: user.id,
-              userName,
-              userEmail: email,
-            }),
+              method: data.method,
+              status: data.status 
+            });
+          } else {
+            const error = await response.text();
+            log.error('N8N provisioning failed', { 
+              userId: user.id, 
+              error 
+            });
           }
-        );
+        }).catch((error) => {
+          log.error('N8N provisioning request failed', { 
+            userId: user.id, 
+            error: error.message 
+          });
+        });
 
-        if (provisionResponse.ok) {
-          const provisionData = await provisionResponse.json();
-          console.log('✅ Northflank provisioning initiated:', provisionData);
-        } else {
-          const errorText = await provisionResponse.text();
-          console.error('❌ Northflank provisioning failed:', errorText);
-        }
+        log.info('N8N provisioning request sent (background)', { userId: user.id });
       } catch (provisionError) {
-        console.error('❌ Error calling provision-northflank:', provisionError);
+        log.error('Error initiating N8N provision', { 
+          userId: user.id, 
+          error: provisionError instanceof Error ? provisionError.message : 'Unknown error'
+        });
         // Don't fail the webhook - user is still created
       }
 
       return NextResponse.json({
         success: true,
         userId: user.id,
-        message: 'User created and Northflank provisioning initiated',
+        message: 'User created and N8N provisioning initiated',
       });
     }
 
@@ -88,28 +117,34 @@ export async function POST(request: NextRequest) {
       const { id: clerkId, email_addresses } = event.data;
       const email = email_addresses[0]?.email_address;
 
-      await db.user.update({
+      await database.user.update({
         where: { clerkId },
-        data: { email, updatedAt: new Date() },
+        data: { 
+          email: email || undefined, 
+          updatedAt: new Date() 
+        },
       });
 
-      console.log('✅ User updated:', clerkId);
+      log.info('User updated', { clerkId });
     }
 
     // Handle user.deleted event
     if (event.type === 'user.deleted') {
       const { id: clerkId } = event.data;
 
-      await db.user.delete({
+      await database.user.delete({
         where: { clerkId },
       });
 
-      console.log('✅ User deleted:', clerkId);
+      log.info('User deleted', { clerkId });
     }
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('💥 Clerk webhook error:', error);
+    log.error('Clerk webhook error', { 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+    
     return NextResponse.json(
       { error: 'Webhook processing failed' },
       { status: 500 }
