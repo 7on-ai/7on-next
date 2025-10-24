@@ -228,12 +228,12 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
         <div className="max-w-7xl mx-auto relative z-10">
           <div className="mb-6 flex items-center justify-center">
             <img 
-              src="/main-logo.svg" 
+              src="/dashboard-icon.svg"
               alt="Logo" 
               className="h-12 w-12 object-contain"
             />
           </div>
-          <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-[#FF6B5B]/40 to-transparent mt-4 rounded-full" />
+          <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-[#FF6B5B]/40 to-transparent mt-4 mb-4 rounded-full" />
 
           <div 
             className="grid grid-cols-1 lg:grid-cols-3 gap-6"
