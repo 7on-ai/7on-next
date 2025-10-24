@@ -1,57 +1,92 @@
-import { env } from '@/env';
-import { auth } from '@repo/auth/server';
+// apps/app/app/page.tsx
+import { auth, currentUser } from '@clerk/nextjs/server';
+import { redirect } from 'next/navigation';
 import { database } from '@repo/database';
-import type { Metadata } from 'next';
-import dynamic from 'next/dynamic';
-import { notFound } from 'next/navigation';
-import { AvatarStack } from './components/avatar-stack';
-import { Cursors } from './components/cursors';
-import { Header } from './components/header';
+import { getUserTier } from '@repo/auth/server';
 
-const title = 'Acme Inc';
-const description = 'My application.';
+export default async function HomePage() {
+  const { userId: clerkUserId } = await auth();
+  const user = await currentUser();
 
-const CollaborationProvider = dynamic(() =>
-  import('./components/collaboration-provider').then(
-    (mod) => mod.CollaborationProvider
-  )
-);
-
-export const metadata: Metadata = {
-  title,
-  description,
-};
-
-const App = async () => {
-  const pages = await database.page.findMany();
-  const { orgId } = await auth();
-
-  if (!orgId) {
-    notFound();
+  if (!clerkUserId || !user) {
+    // Not authenticated, redirect to sign-in
+    redirect('/sign-in');
   }
 
-  return (
-    <>
-      <Header pages={['Building Your Application']} page="Data Fetching">
-        {env.LIVEBLOCKS_SECRET && (
-          <CollaborationProvider orgId={orgId}>
-            <AvatarStack />
-            <Cursors />
-          </CollaborationProvider>
-        )}
-      </Header>
-      <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-        <div className="grid auto-rows-min gap-4 md:grid-cols-3">
-          {pages.map((page) => (
-            <div key={page.id} className="aspect-video rounded-xl bg-muted/50">
-              {page.name}
-            </div>
-          ))}
-        </div>
-        <div className="min-h-[100vh] flex-1 rounded-xl bg-muted/50 md:min-h-min" />
-      </div>
-    </>
-  );
-};
+  const userEmail = user.emailAddresses[0]?.emailAddress || null;
+  const tier = await getUserTier();
 
-export default App;
+  // ✅ Get or create database user
+  let dbUser = await database.user.findUnique({
+    where: { clerkId: clerkUserId },
+    select: {
+      id: true,
+      email: true,
+      northflankProjectId: true,
+      northflankProjectStatus: true,
+      n8nUrl: true,
+      createdAt: true,
+    },
+  });
+
+  // If user doesn't exist in DB, create them
+  if (!dbUser) {
+    console.log('🆕 Creating new user in database (from root page)');
+    
+    dbUser = await database.user.create({
+      data: {
+        clerkId: clerkUserId,
+        email: userEmail || '',
+        subscriptionTier: tier,
+      },
+      select: {
+        id: true,
+        email: true,
+        northflankProjectId: true,
+        northflankProjectStatus: true,
+        n8nUrl: true,
+        createdAt: true,
+      },
+    });
+
+    // ✅ Trigger auto-provision for new user (non-blocking)
+    const userName = user.firstName || user.username || userEmail?.split('@')[0] || 'User';
+    
+    console.log('🚀 Triggering N8N provision from root page for new user:', dbUser.id);
+
+    // Import dynamically to avoid blocking
+    import('./provision-helper-root')
+      .then(({ triggerProvision }) => {
+        triggerProvision(dbUser.id, userName, dbUser.email);
+      })
+      .catch((err) => {
+        console.error('❌ Failed to trigger provision:', err);
+      });
+  } else {
+    // Check if existing user needs provisioning
+    const needsProvisioning = 
+      !dbUser.northflankProjectId || 
+      !dbUser.n8nUrl ||
+      ['failed', 'timeout', 'webhook_provision_failed', 'webhook_fetch_failed'].includes(
+        dbUser.northflankProjectStatus || ''
+      );
+
+    if (needsProvisioning) {
+      console.log('🔄 Existing user needs provisioning:', dbUser.id, dbUser.northflankProjectStatus);
+
+      const userName = user.firstName || user.username || userEmail?.split('@')[0] || 'User';
+
+      // Import dynamically to avoid blocking
+      import('./provision-helper-root')
+        .then(({ triggerProvision }) => {
+          triggerProvision(dbUser.id, userName, dbUser.email);
+        })
+        .catch((err) => {
+          console.error('❌ Failed to trigger provision:', err);
+        });
+    }
+  }
+
+  // Redirect to dashboard
+  redirect('/dashboard');
+}
