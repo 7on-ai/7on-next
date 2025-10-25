@@ -21,7 +21,58 @@ export async function POST(request: NextRequest) {
 
     log.info('Clerk webhook received', { type: event.type });
 
-    // Handle user.created event
+    // ===== Handle user.deleted event =====
+    if (event.type === 'user.deleted') {
+      const { id: clerkId } = event.data;
+
+      try {
+        // ✅ Check if user exists first
+        const existingUser = await database.user.findUnique({
+          where: { clerkId },
+          select: { id: true, northflankProjectId: true }
+        });
+
+        if (!existingUser) {
+          log.warn('⚠️ User already deleted or never existed', { clerkId });
+          return NextResponse.json({ 
+            success: true, 
+            message: 'User already deleted or never existed' 
+          });
+        }
+
+        // TODO: Optional - Delete Northflank project if exists
+        if (existingUser.northflankProjectId) {
+          log.info('🗑️ User has Northflank project - consider cleanup', {
+            projectId: existingUser.northflankProjectId
+          });
+          // Add cleanup logic here if needed in future
+        }
+
+        // Delete user from database
+        await database.user.delete({
+          where: { clerkId },
+        });
+
+        log.info('✅ User deleted successfully', { clerkId, userId: existingUser.id });
+        
+        return NextResponse.json({ 
+          success: true,
+          message: 'User deleted successfully'
+        });
+      } catch (deleteError) {
+        // Handle case where user was already deleted during processing (race condition)
+        if ((deleteError as any)?.code === 'P2025') {
+          log.warn('⚠️ User already deleted during processing', { clerkId });
+          return NextResponse.json({ 
+            success: true, 
+            message: 'User already deleted' 
+          });
+        }
+        throw deleteError;
+      }
+    }
+
+    // ===== Handle user.created event =====
     if (event.type === 'user.created') {
       const { 
         id: clerkId, 
@@ -40,53 +91,77 @@ export async function POST(request: NextRequest) {
 
       log.info('🆕 Creating new user in database', { clerkId, email });
 
-      // Create user in database
-      const user = await database.user.create({
-        data: {
-          clerkId,
-          email,
-          subscriptionTier: 'FREE',
-          apiCallsCount: 0,
-          usageResetAt: new Date(),
-        },
+      // ✅ Check if user already exists (handle webhook retries)
+      let user = await database.user.findUnique({
+        where: { clerkId },
       });
 
-      log.info('✅ User created successfully', { userId: user.id, email });
+      if (user) {
+        log.warn('⚠️ User already exists (webhook retry detected)', { 
+          userId: user.id, 
+          clerkId 
+        });
+        
+        // Check if provisioning is needed
+        if (!user.northflankProjectId || 
+            ['failed', 'webhook_provision_failed', 'webhook_fetch_failed'].includes(user.northflankProjectStatus || '')) {
+          log.info('🔄 Retrying provisioning for existing user', { userId: user.id });
+          // Continue to provisioning below
+        } else {
+          return NextResponse.json({
+            success: true,
+            userId: user.id,
+            message: 'User already exists',
+          });
+        }
+      } else {
+        // Create new user
+        user = await database.user.create({
+          data: {
+            clerkId,
+            email,
+            subscriptionTier: 'FREE',
+            apiCallsCount: 0,
+            usageResetAt: new Date(),
+          },
+        });
+
+        log.info('✅ User created successfully', { userId: user.id, email });
+      }
 
       // 🚀 Auto-provision N8N instance
       const userName = `${first_name || ''} ${last_name || ''}`.trim() 
         || username 
         || email.split('@')[0];
 
-      log.info('🚀 Starting immediate N8N provisioning', { 
+      log.info('🚀 Starting N8N provisioning', { 
         userId: user.id, 
         userName,
         email 
       });
 
-      // ✅ FIX: Use absolute URL and proper error handling
+      // ✅ Use absolute URL with proper fallback
       const provisionUrl = process.env.NEXT_PUBLIC_APP_URL 
         ? `${process.env.NEXT_PUBLIC_APP_URL}/api/provision-northflank`
         : `https://${request.headers.get('host')}/api/provision-northflank`;
 
       console.log('📞 Calling provision API at:', provisionUrl);
 
-      try {
-        const provisionResponse = await fetch(provisionUrl, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'User-Agent': 'Clerk-Webhook/1.0'
-          },
-          body: JSON.stringify({
-            userId: user.id,
-            userName,
-            userEmail: email,
-          }),
-          // ✅ Add timeout
-          signal: AbortSignal.timeout(10000), // 10 seconds timeout for webhook
-        });
-
+      // ✅ Fire-and-forget to prevent webhook timeout
+      // This runs asynchronously and doesn't block webhook response
+      fetch(provisionUrl, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'User-Agent': 'Clerk-Webhook/1.0'
+        },
+        body: JSON.stringify({
+          userId: user.id,
+          userName,
+          userEmail: email,
+        }),
+      })
+      .then(async (provisionResponse) => {
         const responseText = await provisionResponse.text();
         
         if (provisionResponse.ok) {
@@ -100,8 +175,7 @@ export async function POST(request: NextRequest) {
           log.info('✅ N8N provisioning initiated successfully', { 
             userId: user.id,
             method: data.method,
-            status: data.status,
-            response: data
+            status: data.status
           });
 
           console.log('✅ Provision response:', JSON.stringify(data, null, 2));
@@ -114,16 +188,21 @@ export async function POST(request: NextRequest) {
 
           console.error('❌ Provision failed:', responseText);
 
-          // Update user with error status
+          // Update user with error status asynchronously
           await database.user.update({
             where: { id: user.id },
             data: {
               northflankProjectStatus: 'webhook_provision_failed',
-              n8nSetupError: `Webhook provision failed: ${responseText.substring(0, 200)}`,
+              n8nSetupError: `Provision failed: ${responseText.substring(0, 200)}`,
+              updatedAt: new Date(),
             },
+          }).catch(e => {
+            console.error('Failed to update error status:', e);
+            log.error('Failed to update error status', { error: e });
           });
         }
-      } catch (fetchError) {
+      })
+      .catch(async (fetchError) => {
         const errorMessage = fetchError instanceof Error 
           ? fetchError.message 
           : 'Unknown fetch error';
@@ -136,27 +215,46 @@ export async function POST(request: NextRequest) {
 
         console.error('💥 Provision fetch error:', errorMessage);
 
-        // Update user with error status
+        // Update user with error status asynchronously
         await database.user.update({
           where: { id: user.id },
           data: {
             northflankProjectStatus: 'webhook_fetch_failed',
-            n8nSetupError: `Webhook fetch failed: ${errorMessage}`,
+            n8nSetupError: `Fetch failed: ${errorMessage}`,
+            updatedAt: new Date(),
           },
+        }).catch(e => {
+          console.error('Failed to update error status:', e);
+          log.error('Failed to update error status', { error: e });
         });
-      }
+      });
 
+      // ✅ Return immediately - don't wait for provisioning
+      // This prevents webhook timeout issues
       return NextResponse.json({
         success: true,
         userId: user.id,
-        message: 'User created and N8N provisioning attempted',
+        message: 'User created and N8N provisioning started',
       });
     }
 
-    // Handle user.updated event
+    // ===== Handle user.updated event =====
     if (event.type === 'user.updated') {
       const { id: clerkId, email_addresses } = event.data;
       const email = email_addresses[0]?.email_address;
+
+      // ✅ Check if user exists before updating
+      const existingUser = await database.user.findUnique({
+        where: { clerkId },
+      });
+
+      if (!existingUser) {
+        log.warn('⚠️ Cannot update - user not found', { clerkId });
+        return NextResponse.json({ 
+          success: true, 
+          message: 'User not found - skipping update' 
+        });
+      }
 
       await database.user.update({
         where: { clerkId },
@@ -169,21 +267,12 @@ export async function POST(request: NextRequest) {
       log.info('✅ User updated', { clerkId });
     }
 
-    // Handle user.deleted event
-    if (event.type === 'user.deleted') {
-      const { id: clerkId } = event.data;
-
-      await database.user.delete({
-        where: { clerkId },
-      });
-
-      log.info('✅ User deleted', { clerkId });
-    }
-
     return NextResponse.json({ success: true });
+    
   } catch (error) {
     log.error('💥 Clerk webhook error', { 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
     });
     
     console.error('💥 Webhook error:', error);
