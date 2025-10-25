@@ -86,7 +86,7 @@ export function DeploymentStatusScreen({
       case 'initiated':
         return 'Starting deployment';
       default:
-        return 'Initializing';
+        return 'Waking up Sunday...';
     }
   };
 
@@ -122,7 +122,7 @@ export function DeploymentStatusScreen({
                 r="120"
                 fill="none"
                 stroke="url(#gradient)"
-                strokeWidth="8"
+                strokeWidth="3"
                 strokeDasharray={circumference}
                 strokeDashoffset={status === 'ready' ? 0 : strokeDashoffset}
                 strokeLinecap="round"
@@ -160,11 +160,13 @@ export function DeploymentStatusScreen({
                   </div>
                 )}
                 
+                {/*
                 {status !== 'ready' && status !== 'failed' && (
                   <div className="absolute -bottom-2 -right-2 bg-gradient-to-r from-[#FF6B5B] to-[#FF8E53] rounded-full p-2 shadow-lg">
                     <Loader2 className="w-6 h-6 text-white animate-spin" />
                   </div>
                 )}
+                */}
               </div>
             </div>
           </div>
