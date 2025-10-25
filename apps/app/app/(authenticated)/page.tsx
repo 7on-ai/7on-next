@@ -1,26 +1,27 @@
-// apps/app/app/page.tsx
+// apps/app/app/(authenticated)/page.tsx
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
 import { database } from '@repo/database';
 import { getUserTier } from '@repo/auth/server';
+import { DeploymentStatusScreen } from './components/deployment-status-screen';
 
 export default async function HomePage() {
   const { userId: clerkUserId } = await auth();
   const user = await currentUser();
 
   if (!clerkUserId || !user) {
-    // Not authenticated, redirect to sign-in
     redirect('/sign-in');
   }
 
   const userEmail = user.emailAddresses[0]?.emailAddress || null;
   const tier = await getUserTier();
 
-  // ✅ Get or create database user
+  // Get or create database user
   let dbUser = await database.user.findUnique({
     where: { clerkId: clerkUserId },
     select: {
       id: true,
+      clerkId: true,
       email: true,
       northflankProjectId: true,
       northflankProjectStatus: true,
@@ -29,9 +30,9 @@ export default async function HomePage() {
     },
   });
 
-  // If user doesn't exist in DB, create them
+  // If user doesn't exist, create them
   if (!dbUser) {
-    console.log('🆕 Creating new user in database (from root page)');
+    console.log('🆕 Creating new user in database');
     
     dbUser = await database.user.create({
       data: {
@@ -41,6 +42,7 @@ export default async function HomePage() {
       },
       select: {
         id: true,
+        clerkId: true,
         email: true,
         northflankProjectId: true,
         northflankProjectStatus: true,
@@ -48,22 +50,25 @@ export default async function HomePage() {
         createdAt: true,
       },
     });
-
-    console.log('🚀 New user created, skipping auto-provision trigger (provision-helper-root removed)');
-  } else {
-    // Check if existing user needs provisioning
-    const needsProvisioning = 
-      !dbUser.northflankProjectId || 
-      !dbUser.n8nUrl ||
-      ['failed', 'timeout', 'webhook_provision_failed', 'webhook_fetch_failed'].includes(
-        dbUser.northflankProjectStatus || ''
-      );
-
-    if (needsProvisioning) {
-      console.log('🔄 Existing user needs provisioning, skipping trigger (provision-helper-root removed):', dbUser.id, dbUser.northflankProjectStatus);
-    }
   }
 
-  // Redirect to dashboard
+  // Check if user needs deployment status screen
+  const needsDeployment = 
+    !dbUser.northflankProjectId || 
+    !dbUser.n8nUrl ||
+    ['initiated', 'deploying', 'pending'].includes(dbUser.northflankProjectStatus || '');
+
+  // Show deployment status for new users or deploying users
+  if (needsDeployment) {
+    return (
+      <DeploymentStatusScreen 
+        userId={dbUser.id}
+        userEmail={userEmail || ''}
+        projectStatus={dbUser.northflankProjectStatus || 'pending'}
+      />
+    );
+  }
+
+  // User already has N8N deployed, redirect to dashboard
   redirect('/dashboard');
 }

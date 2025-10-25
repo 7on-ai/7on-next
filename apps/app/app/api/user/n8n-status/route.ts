@@ -1,53 +1,73 @@
 // apps/app/app/api/user/n8n-status/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@repo/auth/server';
-import { database } from '@repo/database';
+import { database as db } from '@repo/database';
 
 export async function GET(request: NextRequest) {
   try {
-    const { userId: clerkUserId } = await auth();
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get('userId');
 
-    if (!clerkUserId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'Missing userId parameter' },
+        { status: 400 }
+      );
     }
 
-    // ✅ ใช้ @repo/database
-    const user = await database.user.findUnique({
-      where: { clerkId: clerkUserId },
+    // Fetch user's N8N status
+    const user = await db.user.findUnique({
+      where: { id: userId },
       select: {
         id: true,
         n8nUrl: true,
-        northflankProjectStatus: true,
+        n8nUserEmail: true,
         northflankProjectId: true,
         northflankProjectName: true,
-        n8nApiKey: true,
+        northflankProjectStatus: true,
+        templateCompletedAt: true,
+        n8nSetupError: true,
       },
     });
 
     if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
+      );
     }
 
-    const injectedCount = await database.socialCredential.count({
-      where: { userId: user.id, injectedToN8n: true },
+    // Count injected providers
+    const injectedProviders = await db.socialCredential.count({
+      where: {
+        userId: userId,
+        injectedToN8n: true,
+      },
     });
 
-    const totalCount = await database.socialCredential.count({
-      where: { userId: user.id },
+    // Count all social providers
+    const totalProviders = await db.socialCredential.count({
+      where: {
+        userId: userId,
+      },
     });
 
     return NextResponse.json({
       n8n_ready: user.northflankProjectStatus === 'ready' && !!user.n8nUrl,
       n8n_url: user.n8nUrl,
-      project_status: user.northflankProjectStatus,
-      project_id: user.northflankProjectId,
-      project_name: user.northflankProjectName,
-      injected_providers_count: injectedCount,
-      social_providers_count: totalCount,
-      has_api_key: !!user.n8nApiKey,
+      n8n_user_email: user.n8nUserEmail,
+      northflank_project_id: user.northflankProjectId,
+      northflank_project_name: user.northflankProjectName,
+      northflank_project_status: user.northflankProjectStatus,
+      template_completed_at: user.templateCompletedAt,
+      injected_providers_count: injectedProviders,
+      social_providers_count: totalProviders,
+      setup_error: user.n8nSetupError,
     });
   } catch (error) {
-    console.error('Error:', error);
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+    console.error('Error fetching N8N status:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
   }
 }

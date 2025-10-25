@@ -1,6 +1,7 @@
 // app/api/provision-northflank/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { database as db } from '@repo/database';
+import { auth } from '@clerk/nextjs/server';
 
 const NORTHFLANK_API_TOKEN = process.env.NORTHFLANK_API_TOKEN!;
 const WEBHOOK_URL = process.env.WEBHOOK_URL || 'https://your-app.vercel.app/api/setup-webhook';
@@ -21,6 +22,33 @@ export async function POST(request: NextRequest) {
         { success: false, error: 'Missing userId or userEmail' },
         { status: 400 }
       );
+    }
+
+    // Get Clerk User ID
+    let clerkUserId: string | null = null;
+    
+    // Try to get from database first
+    const dbUser = await db.user.findUnique({
+      where: { id: userId },
+      select: { clerkId: true },
+    });
+
+    if (dbUser?.clerkId) {
+      clerkUserId = dbUser.clerkId;
+      console.log('✅ Clerk User ID from database:', clerkUserId);
+    } else {
+      // Fallback: try to get from auth() if this is called from authenticated context
+      const authResult = await auth();
+      if (authResult?.userId) {
+        clerkUserId = authResult.userId;
+        console.log('✅ Clerk User ID from auth context:', clerkUserId);
+      } else {
+        console.error('❌ Could not retrieve Clerk User ID');
+        return NextResponse.json(
+          { success: false, error: 'Could not retrieve Clerk User ID' },
+          { status: 400 }
+        );
+      }
     }
 
     // Prevent duplicate runs
@@ -121,7 +149,12 @@ export async function POST(request: NextRequest) {
     runningMonitors.add(userId);
 
     try {
-      const templateRun = await startSundayTemplate(userId, userName, userEmail);
+      const templateRun = await startSundayTemplate(
+        userId, 
+        clerkUserId, 
+        userName, 
+        userEmail
+      );
       
       console.log('Template run initiated - starting monitoring');
 
@@ -156,7 +189,7 @@ export async function POST(request: NextRequest) {
           id: templateRun.data.id,
           status: 'initiated',
         },
-        message: 'Template deployment initiated with hybrid API Key creation!',
+        message: 'Template deployment initiated with Neon database integration!',
         estimatedTime: '5-10 minutes',
         monitoring: 'Ultra-fast N8N_HOST monitoring active',
         userCredentials: {
@@ -241,7 +274,12 @@ function generateApiKey(): string {
   return result;
 }
 
-async function startSundayTemplate(userId: string, userName: string, userEmail: string) {
+async function startSundayTemplate(
+  userId: string,
+  clerkUserId: string,
+  userName: string,
+  userEmail: string
+) {
   const nameParts = (userName || '').trim().split(/\s+/);
   const firstName = nameParts[0] || userName || userEmail.split('@')[0];
   const encryptionKey = Math.random().toString(36).substring(2, 34);
@@ -249,21 +287,44 @@ async function startSundayTemplate(userId: string, userName: string, userEmail: 
 
   console.log('Generated N8N API Key for fallback:', n8nApiKey.substring(0, 10) + '...[REDACTED]');
 
+  // ✅ Validate required environment variables
+  const requiredEnvVars = {
+    DATABASE_URL: process.env.DATABASE_URL,
+    GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+  };
+
+  const missingVars = Object.entries(requiredEnvVars)
+    .filter(([_, value]) => !value)
+    .map(([key]) => key);
+
+  if (missingVars.length > 0) {
+    throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
+  }
+
   const templateRunPayload = {
     arguments: {
       id: userId.substring(0, 8),
+      clerk_user_id: clerkUserId, // ✅ เพิ่ม Clerk User ID
       user_id: userId,
       user_email: userEmail,
       user_name: firstName,
       webhook_url: WEBHOOK_URL,
       webhook_token: WEBHOOK_AUTH_TOKEN,
       N8N_ENCRYPTION_KEY: encryptionKey,
-      supabase_url: process.env.NEXT_PUBLIC_APP_URL,
-      supabase_service_role_key: process.env.DATABASE_URL,
+      neon_database_url: process.env.DATABASE_URL!, // ✅ ใช้ Neon database URL
+      google_oauth_client_id: process.env.GOOGLE_CLIENT_ID!, // ✅ เพิ่ม Google OAuth
+      google_oauth_client_secret: process.env.GOOGLE_CLIENT_SECRET!, // ✅ เพิ่ม Google OAuth
     },
   };
 
-  console.log('Starting Sunday template...');
+  console.log('Starting Sunday template with Neon database...');
+  console.log('Arguments:', {
+    ...templateRunPayload.arguments,
+    N8N_ENCRYPTION_KEY: '[REDACTED]',
+    neon_database_url: '[REDACTED]',
+    google_oauth_client_secret: '[REDACTED]',
+  });
 
   const response = await fetch('https://api.northflank.com/v1/templates/sunday/runs', {
     method: 'POST',
@@ -276,11 +337,12 @@ async function startSundayTemplate(userId: string, userName: string, userEmail: 
 
   if (!response.ok) {
     const errorText = await response.text();
+    console.error('Template run failed:', errorText);
     throw new Error(`Template run failed: ${errorText}`);
   }
 
   const result = await response.json();
-  console.log('Template run started with ID:', result.data.id);
+  console.log('✅ Template run started with ID:', result.data.id);
 
   return {
     ...result,
@@ -616,7 +678,7 @@ async function monitorN8nDeployment(
             },
           });
 
-          console.log('ULTRA FAST: SUCCESS! N8N setup completed');
+          console.log('ULTRA FAST: SUCCESS! N8N setup completed with Neon database');
           return;
         }
       }
