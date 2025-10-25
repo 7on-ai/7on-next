@@ -84,7 +84,7 @@ export function DeploymentStatusScreen({
       case 'deploying':
         return 'Setting up your workspace';
       case 'initiated':
-        return 'Starting deployment';
+        return 'Sunday ready in 7 min.';
       default:
         return 'Waking up Sunday...';
     }
@@ -126,14 +126,14 @@ export function DeploymentStatusScreen({
                 strokeDasharray={circumference}
                 strokeDashoffset={status === 'ready' ? 0 : strokeDashoffset}
                 strokeLinecap="round"
-                className="transition-all duration-1000"
+                style={{ transition: 'stroke-dashoffset 420000ms linear' }}
               />
               
               {/* Gradient Definition */}
               <defs>
                 <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#FF6B5B" />
-                  <stop offset="100%" stopColor="#FF8E53" />
+                  <stop offset="0%" stopColor="#ffc8abff" />
+                  <stop offset="100%" stopColor="#FF6B5B" />
                 </linearGradient>
               </defs>
             </svg>

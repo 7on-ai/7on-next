@@ -19,15 +19,21 @@ export async function POST(request: NextRequest) {
 
     if (!userId || !userEmail) {
       return NextResponse.json(
-        { success: false, error: 'Missing userId or userEmail' },
+        { 
+          success: false, 
+          error: 'Missing userId or userEmail',
+          details: {
+            userId: userId ? 'provided' : 'missing',
+            userEmail: userEmail ? 'provided' : 'missing',
+          }
+        },
         { status: 400 }
       );
     }
 
     // Get Clerk User ID
-    let clerkUserId: string | null = null;
+    let clerkUserId: string | null | undefined = null;
     
-    // Try to get from database first
     const dbUser = await db.user.findUnique({
       where: { id: userId },
       select: { clerkId: true },
@@ -37,7 +43,6 @@ export async function POST(request: NextRequest) {
       clerkUserId = dbUser.clerkId;
       console.log('✅ Clerk User ID from database:', clerkUserId);
     } else {
-      // Fallback: try to get from auth() if this is called from authenticated context
       const authResult = await auth();
       if (authResult?.userId) {
         clerkUserId = authResult.userId;
@@ -76,7 +81,6 @@ export async function POST(request: NextRequest) {
     if (existingUser?.northflankProjectId) {
       console.log('User already has a project:', existingUser.northflankProjectId);
 
-      // Verify project exists in Northflank
       const projectResponse = await fetch(
         `https://api.northflank.com/v1/projects/${existingUser.northflankProjectId}`,
         {
@@ -90,14 +94,12 @@ export async function POST(request: NextRequest) {
       if (projectResponse.ok) {
         const project = await projectResponse.json();
 
-        // Try to get N8N_HOST if not stored
         let n8nUrl = existingUser.n8nUrl;
         if (!n8nUrl) {
           const n8nData = await getN8nHostFromProject(existingUser.northflankProjectId);
           if (n8nData?.n8nUrl) {
             n8nUrl = n8nData.n8nUrl;
 
-            // Update database with N8N URL
             await db.user.update({
               where: { id: userId },
               data: {
@@ -107,7 +109,6 @@ export async function POST(request: NextRequest) {
               },
             });
 
-            // Try to create missing API key for existing project
             if (!existingUser.n8nApiKey && existingUser.n8nEncryptionKey) {
               console.log('Existing project: Attempting to create missing n8n API Key...');
               const fallbackKey = generateApiKey();
@@ -145,20 +146,18 @@ export async function POST(request: NextRequest) {
 
     console.log('Creating new project for user...');
 
-    // Add user to running monitors
     runningMonitors.add(userId);
 
     try {
       const templateRun = await startSundayTemplate(
         userId, 
-        clerkUserId, 
+        clerkUserId!, 
         userName, 
         userEmail
       );
       
       console.log('Template run initiated - starting monitoring');
 
-      // Store initial data
       await db.user.update({
         where: { id: userId },
         data: {
@@ -171,7 +170,6 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      // Start monitoring in background (non-blocking)
       monitorN8nDeployment(
         templateRun.data.id,
         userId,
@@ -202,7 +200,6 @@ export async function POST(request: NextRequest) {
       runningMonitors.delete(userId);
       console.error('Template initiation failed:', templateError);
 
-      // Fallback to manual creation
       const manualResult = await createCompleteProject(userId, userName, userEmail);
 
       await db.user.update({
@@ -232,13 +229,12 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const err = error as Error;
     console.error('💥 Error in provision-northflank:', err);
+    console.error('Stack trace:', err.stack);
 
-    // Clean up running monitors
     const body = await request.json().catch(() => ({}));
     if (body.userId) {
       runningMonitors.delete(body.userId);
 
-      // Update database with error
       try {
         await db.user.update({
           where: { id: body.userId },
@@ -257,6 +253,8 @@ export async function POST(request: NextRequest) {
       {
         success: false,
         error: err.message || 'Unknown error occurred',
+        errorType: err.name,
+        timestamp: new Date().toISOString(),
       },
       { status: 500 }
     );
@@ -287,43 +285,68 @@ async function startSundayTemplate(
 
   console.log('Generated N8N API Key for fallback:', n8nApiKey.substring(0, 10) + '...[REDACTED]');
 
-  // ✅ Validate required environment variables
+  // ✅ ENHANCED: Validate ALL required environment variables
   const requiredEnvVars = {
     DATABASE_URL: process.env.DATABASE_URL,
-    GOOGLE_CLIENT_ID: process.env.GOOGLE_OAUTH_CLIENT_ID,
-    GOOGLE_CLIENT_SECRET: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
+    GOOGLE_OAUTH_CLIENT_ID: process.env.GOOGLE_OAUTH_CLIENT_ID,
+    GOOGLE_OAUTH_CLIENT_SECRET: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
+    NORTHFLANK_API_TOKEN: NORTHFLANK_API_TOKEN,
+    WEBHOOK_URL: WEBHOOK_URL,
+    WEBHOOK_AUTH_TOKEN: WEBHOOK_AUTH_TOKEN,
   };
 
   const missingVars = Object.entries(requiredEnvVars)
-    .filter(([_, value]) => !value)
+    .filter(([_, value]) => !value || value === 'undefined')
     .map(([key]) => key);
 
   if (missingVars.length > 0) {
+    console.error('❌ Missing required environment variables:', missingVars);
     throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
   }
+
+  // ✅ Validate DATABASE_URL format
+  if (!requiredEnvVars.DATABASE_URL?.startsWith('postgresql://')) {
+    throw new Error('DATABASE_URL must be a valid PostgreSQL connection string starting with postgresql://');
+  }
+
+  // ✅ Validate encryption key length
+  if (encryptionKey.length < 32) {
+    console.error('❌ Generated encryption key too short:', encryptionKey.length);
+    throw new Error('Encryption key generation failed - insufficient length');
+  }
+
+  console.log('✅ All environment variables validated successfully');
+  console.log('Environment check:', {
+    DATABASE_URL: requiredEnvVars.DATABASE_URL ? '✓ Set (Neon)' : '✗ Missing',
+    GOOGLE_OAUTH_CLIENT_ID: requiredEnvVars.GOOGLE_OAUTH_CLIENT_ID ? '✓ Set' : '✗ Missing',
+    GOOGLE_OAUTH_CLIENT_SECRET: requiredEnvVars.GOOGLE_OAUTH_CLIENT_SECRET ? '✓ Set' : '✗ Missing',
+    WEBHOOK_URL: requiredEnvVars.WEBHOOK_URL ? '✓ Set' : '✗ Missing',
+    WEBHOOK_AUTH_TOKEN: requiredEnvVars.WEBHOOK_AUTH_TOKEN ? '✓ Set' : '✗ Missing',
+  });
 
   const templateRunPayload = {
     arguments: {
       id: userId.substring(0, 8),
-      clerk_user_id: clerkUserId, // ✅ เพิ่ม Clerk User ID
+      clerk_user_id: clerkUserId,
       user_id: userId,
       user_email: userEmail,
       user_name: firstName,
-      webhook_url: WEBHOOK_URL,
-      webhook_token: WEBHOOK_AUTH_TOKEN,
+      webhook_url: requiredEnvVars.WEBHOOK_URL!,
+      webhook_token: requiredEnvVars.WEBHOOK_AUTH_TOKEN!,
       N8N_ENCRYPTION_KEY: encryptionKey,
-      neon_database_url: process.env.DATABASE_URL!, // ✅ ใช้ Neon database URL
-      google_oauth_client_id: process.env.GOOGLE_OAUTH_CLIENT_ID!, // ✅ เพิ่ม Google OAuth
-      google_oauth_client_secret: process.env.GOOGLE_OAUTH_CLIENT_SECRET!, // ✅ เพิ่ม Google OAuth
+      neon_database_url: requiredEnvVars.DATABASE_URL!,
+      google_oauth_client_id: requiredEnvVars.GOOGLE_OAUTH_CLIENT_ID!,
+      google_oauth_client_secret: requiredEnvVars.GOOGLE_OAUTH_CLIENT_SECRET!,
     },
   };
 
-  console.log('Starting Sunday template with Neon database...');
+  console.log('Starting Sunday template with validated configuration...');
   console.log('Arguments:', {
     ...templateRunPayload.arguments,
     N8N_ENCRYPTION_KEY: '[REDACTED]',
-    neon_database_url: '[REDACTED]',
+    neon_database_url: '[REDACTED - Neon DB]',
     google_oauth_client_secret: '[REDACTED]',
+    webhook_token: '[REDACTED]',
   });
 
   const response = await fetch('https://api.northflank.com/v1/templates/sunday/runs', {
@@ -337,7 +360,7 @@ async function startSundayTemplate(
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('Template run failed:', errorText);
+    console.error('❌ Template run failed:', errorText);
     throw new Error(`Template run failed: ${errorText}`);
   }
 
@@ -411,7 +434,6 @@ async function getProjectIdFromTemplate(templateRunId: string): Promise<string |
     const runDetails = await runResponse.json();
     console.log('Template run status:', runDetails.data?.status);
 
-    // Method 1: Check workflow steps
     if (runDetails.data?.spec?.steps) {
       const projectStep = runDetails.data.spec.steps.find((step: any) => step.kind === 'Project');
       if (projectStep?.response?.data?.id) {
@@ -420,13 +442,11 @@ async function getProjectIdFromTemplate(templateRunId: string): Promise<string |
       }
     }
 
-    // Method 2: Check output/results
     if (runDetails.data?.output?.project_id) {
       console.log('✅ Project ID found in output:', runDetails.data.output.project_id);
       return runDetails.data.output.project_id;
     }
 
-    // Method 3: Check results array
     if (runDetails.data?.results && Array.isArray(runDetails.data.results)) {
       for (const result of runDetails.data.results) {
         if (result.kind === 'Project' && result.data?.id) {
@@ -485,7 +505,6 @@ async function getN8nHostFromProject(projectId: string) {
 
     const secretDetails = await secretDetailsResponse.json();
 
-    // Check if N8N_HOST exists and is not a template variable
     if (secretDetails.data?.data?.N8N_HOST && !secretDetails.data.data.N8N_HOST.includes('${refs.')) {
       const n8nUrl = `https://${secretDetails.data.data.N8N_HOST}`;
       console.log('FAST CHECK: N8N_HOST found!', n8nUrl);
@@ -512,20 +531,17 @@ async function createN8nApiKey(
   try {
     console.log('Creating n8n API Key for URL:', n8nUrl);
     
-    // Wait for n8n to be fully ready
     console.log('Waiting for N8N to be ready...');
-    await new Promise((resolve) => setTimeout(resolve, 30000)); // 30 seconds
+    await new Promise((resolve) => setTimeout(resolve, 30000));
 
     const password = `7On${encryptionKey}`;
     const credentials = btoa(`${userEmail}:${password}`);
 
-    // Try multiple times with exponential backoff
     const maxRetries = 5;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         console.log(`API Key creation attempt ${attempt}/${maxRetries}`);
 
-        // Check if N8N is responding first
         const healthCheck = await fetch(`${n8nUrl}/healthz`, {
           method: 'GET',
           headers: { 'Content-Type': 'application/json' },
@@ -574,7 +590,6 @@ async function createN8nApiKey(
       }
     }
 
-    // Fallback: Use pre-generated key
     console.log('⚠️ REST API method failed, using pre-generated key as fallback');
     return preGeneratedKey;
   } catch (err) {
@@ -601,7 +616,6 @@ async function monitorN8nDeployment(
 
   while (Date.now() - startTime < maxWaitTime && !n8nFound) {
     try {
-      // Phase 1: Get project ID
       if (!projectId) {
         console.log('ULTRA FAST: Getting project ID...');
         projectId = await getProjectIdFromTemplate(templateRunId);
@@ -609,7 +623,6 @@ async function monitorN8nDeployment(
         if (projectId) {
           console.log('ULTRA FAST: Project ID found!', projectId);
           
-          // Update database with project ID immediately
           await db.user.update({
             where: { id: userId },
             data: {
@@ -621,7 +634,6 @@ async function monitorN8nDeployment(
         }
       }
 
-      // Phase 2: Check for N8N_HOST
       if (projectId) {
         console.log('ULTRA FAST: Checking N8N_HOST availability...');
         const n8nData = await getN8nHostFromProject(projectId);
@@ -630,7 +642,6 @@ async function monitorN8nDeployment(
           console.log('ULTRA FAST: N8N_HOST FOUND!', n8nData.n8nUrl);
           n8nFound = true;
 
-          // Get project name
           let projectName = 'Unknown';
           try {
             const projectResponse = await fetch(
@@ -651,7 +662,6 @@ async function monitorN8nDeployment(
             console.log('Could not get project name:', e);
           }
 
-          // Try to create n8n API Key
           console.log('ULTRA FAST: Attempting to create n8n API Key via REST API...');
           const finalApiKey = await createN8nApiKey(
             n8nData.n8nUrl,
@@ -660,7 +670,6 @@ async function monitorN8nDeployment(
             preGeneratedApiKey
           );
 
-          // Update database with final results
           console.log('ULTRA FAST: Updating database with final results...');
           await db.user.update({
             where: { id: userId },
@@ -683,7 +692,6 @@ async function monitorN8nDeployment(
         }
       }
 
-      // Wait before next check
       await new Promise((resolve) => setTimeout(resolve, fastPollInterval));
     } catch (error) {
       console.error('ULTRA FAST: Monitoring error:', error);
@@ -691,7 +699,6 @@ async function monitorN8nDeployment(
     }
   }
 
-  // Timeout reached
   console.log('ULTRA FAST: Timeout reached without finding N8N_HOST');
   await db.user.update({
     where: { id: userId },
