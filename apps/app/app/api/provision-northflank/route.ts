@@ -290,8 +290,8 @@ async function startSundayTemplate(
   // ✅ Validate required environment variables
   const requiredEnvVars = {
     DATABASE_URL: process.env.DATABASE_URL,
-    GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
-    GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+    GOOGLE_CLIENT_ID: process.env.GOOGLE_OAUTH_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
   };
 
   const missingVars = Object.entries(requiredEnvVars)
@@ -313,8 +313,8 @@ async function startSundayTemplate(
       webhook_token: WEBHOOK_AUTH_TOKEN,
       N8N_ENCRYPTION_KEY: encryptionKey,
       neon_database_url: process.env.DATABASE_URL!, // ✅ ใช้ Neon database URL
-      google_oauth_client_id: process.env.GOOGLE_CLIENT_ID!, // ✅ เพิ่ม Google OAuth
-      google_oauth_client_secret: process.env.GOOGLE_CLIENT_SECRET!, // ✅ เพิ่ม Google OAuth
+      google_oauth_client_id: process.env.GOOGLE_OAUTH_CLIENT_ID!, // ✅ เพิ่ม Google OAuth
+      google_oauth_client_secret: process.env.GOOGLE_OAUTH_CLIENT_SECRET!, // ✅ เพิ่ม Google OAuth
     },
   };
 
