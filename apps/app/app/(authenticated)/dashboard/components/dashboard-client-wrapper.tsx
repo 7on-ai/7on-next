@@ -215,11 +215,22 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
       setLoadingConnect(service);
       const state = createOAuthState(userId, service);
       const authUrl = buildAuthorizationUrl(service, state);
-      setTimeout(() => {
-        window.location.href = authUrl;
-      }, 250);
+      
+      // 🔍 Debug logging
+      console.log('🔗 OAuth Flow Started:', {
+        service,
+        userId,
+        state,
+        authUrl,
+        domain: process.env.NEXT_PUBLIC_AUTH0_DOMAIN,
+        clientId: CLIENT_IDS[service],
+        callbackUrl: process.env.NEXT_PUBLIC_AUTH0_CALLBACK_URL || process.env.NEXT_PUBLIC_APP_URL + '/api/oauth-callback'
+      });
+      
+      // ✅ ลบ setTimeout - redirect ทันที
+      window.location.href = authUrl;
     } catch (err) {
-      console.error(err);
+      console.error('❌ OAuth Connection Error:', err);
       showToast("⚠️ Failed to start connection. Try again.");
       setLoadingConnect(null);
     }
