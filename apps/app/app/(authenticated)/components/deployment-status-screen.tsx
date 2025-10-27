@@ -75,20 +75,29 @@ export function DeploymentStatusScreen({
   const circumference = 2 * Math.PI * 120;
   const strokeDashoffset = circumference - (progress / 100) * circumference;
 
-  const getStatusMessage = () => {
-    switch (status) {
-      case 'ready':
-        return 'Your workspace is ready';
-      case 'failed':
-        return 'Deployment failed';
-      case 'deploying':
-        return 'Setting up your workspace';
-      case 'initiated':
-        return 'Starting deployment';
-      default:
-        return 'Waking up Sunday...';
+const getStatusMessage = () => {
+  switch (status) {
+    case 'ready':
+      return 'Your Sunday is ready';
+    case 'failed':
+      return 'Deployment failed';
+    case 'deploying': {
+      const messages = [
+        'Your Sunday, ready in 7 min.',
+        'Waking up your Sunday...',
+        'Tuning consciousness level 7...',
+        'Activating core systems...',
+      ];
+      // สุ่มข้อความทุกครั้งที่เรียก
+      const randomIndex = Math.floor(Math.random() * messages.length);
+      return messages[randomIndex];
     }
-  };
+    case 'initiated':
+      return 'Starting deployment';
+    default:
+      return 'Waking up your Sunday';
+  }
+};
 
   return (
     <>
