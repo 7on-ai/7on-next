@@ -180,20 +180,25 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
 
   useEffect(() => {
     const fetchStats = async () => {
-      if (!userId) return;
+      if (!userId) {
+        console.warn('No userId provided, skipping stats fetch');
+        return;
+      }
+      
       try {
-        // ✅ Fixed: ใช้ path ที่ถูกต้อง
-        const response = await fetch(`/api/user/n8n-status`);
+        // ✅ FIXED: เพิ่ม userId parameter
+        const response = await fetch(`/api/user/n8n-status?userId=${userId}`);
         if (response.ok) {
           const data = await response.json();
           setStats({ activeConnections: data.injected_providers_count || 0 });
         } else {
-          console.error('Failed to fetch n8n status:', response.status);
+          console.error('Failed to fetch n8n status:', response.status, await response.text());
         }
       } catch (e) {
         console.error("Error fetching stats:", e);
       }
     };
+    
     fetchStats();
   }, [userId]);
 
@@ -307,12 +312,12 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-slate-800 dark:text-slate-200 text-lg font-bold">Upgrade to Unlock</h3>
                   {isFree && (
-<Button asChild size="sm" className="rounded-xl px-4 py-2 border-2 border-[#FF6B5B] bg-transparent text-white hover:opacity-90 transition">
-  <Link href="/pricing" className="flex items-center gap-2">
-    <Sparkles className="h-4 w-4" />
-    Upgrade
-  </Link>
-</Button>
+                    <Button asChild size="sm" className="rounded-xl px-4 py-2 border-2 border-[#FF6B5B] bg-transparent text-white hover:opacity-90 transition">
+                      <Link href="/pricing" className="flex items-center gap-2">
+                        <Sparkles className="h-4 w-4" />
+                        Upgrade
+                      </Link>
+                    </Button>
                   )}
                 </div>
 
@@ -346,8 +351,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
               <div className="relative overflow-hidden rounded-2xl bg-white/95 dark:bg-[#0b0d12]/90 backdrop-blur-xl border border-slate-200/40 dark:border-slate-700/40 px-5 py-3 shadow-2xl max-w-[90vw] sm:max-w-sm">
                 <div className="flex items-center gap-3">
                   <div
-                    className={`w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center transition-transform
-.showIcon ? "scale-100" : "scale-75"}`}
+                    className={`w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center transition-transform ${toast.showIcon ? "scale-100" : "scale-75"}`}
                   >
                     <Check className="w-4 h-4 text-green-600 dark:text-green-300" />
                   </div>
