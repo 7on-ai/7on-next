@@ -81,19 +81,10 @@ const getStatusMessage = () => {
       return 'Your Sunday is ready';
     case 'failed':
       return 'Deployment failed';
-    case 'deploying': {
-      const messages = [
-        'Your Sunday, ready in 7 min.',
-        'Waking up your Sunday...',
-        'Tuning consciousness level 7...',
-        'Activating core systems...',
-      ];
-      // สุ่มข้อความทุกครั้งที่เรียก
-      const randomIndex = Math.floor(Math.random() * messages.length);
-      return messages[randomIndex];
-    }
+    case 'deploying':
+      return 'Waking up your Sunday';
     case 'initiated':
-      return 'Starting deployment';
+      return 'Sunday, ready in 7 min.';
     default:
       return 'Waking up your Sunday';
   }
@@ -148,7 +139,7 @@ const getStatusMessage = () => {
             </svg>
 
             {/* Logo in Center */}
-            <div className="absolute inset-0 flex items-center justify-center">
+            <div className="absolute inset-0 flex items-center justify-center -translate-y-4">
               <div className="relative">
                 <img
                   src="/main-icon.svg"
