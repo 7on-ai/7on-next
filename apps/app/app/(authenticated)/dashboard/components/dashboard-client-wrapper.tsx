@@ -125,6 +125,25 @@ interface DashboardClientProps {
   initialTier: SubscriptionTier;
 }
 
+interface ConnectionStatus {
+  [key: string]: boolean;
+}
+
+/* ----------------------- Connection Status Indicator ---------------------- */
+const ConnectionStatusIndicator = ({ isConnected }: { isConnected: boolean }) => (
+  <div className="absolute -top-1 -right-1 z-10">
+    <div className={`w-3 h-3 rounded-full border-2 border-white dark:border-slate-900 ${
+      isConnected 
+        ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' 
+        : 'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.6)]'
+    }`}>
+      {isConnected && (
+        <div className="absolute inset-0 rounded-full bg-green-400 animate-ping opacity-75" />
+      )}
+    </div>
+  </div>
+);
+
 /* ------------------------------- Component -------------------------------- */
 export function DashboardClientWrapper({ userId, userEmail, initialTier }: DashboardClientProps) {
   const router = useRouter();
@@ -137,6 +156,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
   const [stats, setStats] = useState<{ activeConnections: number }>({ activeConnections: 0 });
   const [loadingConnect, setLoadingConnect] = useState<string | null>(null);
   const [hovering, setHovering] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({});
 
   const services = [
     { service: "google" as const, label: "Google", icon: <GoogleIcon /> },
@@ -172,11 +192,41 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
     if (connected && status === "success") {
       showToast(`✅ Successfully connected ${connected}!`);
       clearUrlParams(["connected", "status", "timestamp"]);
+      // Refresh connection status
+      fetchConnectionStatus();
     } else if (error) {
       showToast(`❌ Connection failed: ${decodeURIComponent(error)}`);
       clearUrlParams(["error", "timestamp"]);
     }
   }, [searchParams?.toString()]);
+
+  const fetchConnectionStatus = async () => {
+    if (!userId) {
+      console.warn('No userId provided, skipping connection status fetch');
+      return;
+    }
+    
+    try {
+      const response = await fetch(`/api/user/social-credentials?userId=${userId}`);
+      if (response.ok) {
+        const credentials = await response.json();
+        // Create a map of connected services
+        const statusMap: ConnectionStatus = {};
+        credentials.forEach((cred: any) => {
+          if (cred.injectedToN8n) {
+            // Normalize provider names to match service keys
+            const normalizedProvider = cred.provider.toLowerCase().replace('google-oauth2', 'google');
+            statusMap[normalizedProvider] = true;
+          }
+        });
+        setConnectionStatus(statusMap);
+      } else {
+        console.error('Failed to fetch connection status:', response.status);
+      }
+    } catch (e) {
+      console.error("Error fetching connection status:", e);
+    }
+  };
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -186,7 +236,6 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
       }
       
       try {
-        // ✅ FIXED: เพิ่ม userId parameter
         const response = await fetch(`/api/user/n8n-status?userId=${userId}`);
         if (response.ok) {
           const data = await response.json();
@@ -200,6 +249,15 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
     };
     
     fetchStats();
+    fetchConnectionStatus();
+    
+    // Poll for updates every 10 seconds
+    const interval = setInterval(() => {
+      fetchStats();
+      fetchConnectionStatus();
+    }, 10000);
+    
+    return () => clearInterval(interval);
   }, [userId]);
 
   const handleConnect = async (service: keyof typeof CLIENT_IDS, isLocked: boolean) => {
@@ -216,7 +274,6 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
       const state = createOAuthState(userId, service);
       const authUrl = buildAuthorizationUrl(service, state);
       
-      // 🔍 Debug logging
       console.log('🔗 OAuth Flow Started:', {
         service,
         userId,
@@ -227,7 +284,6 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
         callbackUrl: process.env.NEXT_PUBLIC_AUTH0_CALLBACK_URL || process.env.NEXT_PUBLIC_APP_URL + '/api/oauth-callback'
       });
       
-      // ✅ ลบ setTimeout - redirect ทันที
       window.location.href = authUrl;
     } catch (err) {
       console.error('❌ OAuth Connection Error:', err);
@@ -291,6 +347,8 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
               <div className="space-y-3">
                 {availableServices.map(({ service, label, icon }) => {
                   const loading = loadingConnect === service;
+                  const isConnected = connectionStatus[service] || false;
+                  
                   return (
                     <button
                       aria-label={`Connect ${label}`}
@@ -299,17 +357,26 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
                         handleConnect(service, false);
                         showToast(`Connecting to ${label}...`);
                       }}
-                      className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl transition transform hover:scale-[1.01] hover:shadow-lg border border-slate-200/40 dark:border-slate-700/30 bg-white/30 dark:bg-white/5 backdrop-blur-sm"
+                      className="relative w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl transition transform hover:scale-[1.01] hover:shadow-lg border border-slate-200/40 dark:border-slate-700/30 bg-white/30 dark:bg-white/5 backdrop-blur-sm"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-white/30 dark:bg-white/5">
+                        <div className="relative h-8 w-8 rounded-lg flex items-center justify-center bg-white/30 dark:bg-white/5">
                           {icon}
+                          <ConnectionStatusIndicator isConnected={isConnected} />
                         </div>
-                        <div className="text-sm font-medium text-slate-800 dark:text-slate-100">Connect {label}</div>
+                        <div className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                          {isConnected ? `${label} Connected` : `Connect ${label}`}
+                        </div>
                       </div>
 
                       <div className="flex items-center gap-3">
-                        {loading ? <Loader2 className="h-4 w-4 animate-spin text-slate-600 dark:text-slate-300" /> : <svg className="h-4 w-4 text-slate-500 dark:text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>}
+                        {loading ? (
+                          <Loader2 className="h-4 w-4 animate-spin text-slate-600 dark:text-slate-300" />
+                        ) : (
+                          <svg className="h-4 w-4 text-slate-500 dark:text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                          </svg>
+                        )}
                       </div>
                     </button>
                   );
@@ -338,9 +405,14 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
                       key={service}
                       className="flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-200 border border-slate-200/40 dark:border-slate-700/30 bg-white/20 dark:bg-white/3 cursor-not-allowed"
                     >
-                      <div className="flex h-8 w-8 items-center justify-center rounded-lg opacity-80">{icon}</div>
+                      <div className="relative flex h-8 w-8 items-center justify-center rounded-lg opacity-80">
+                        {icon}
+                        <ConnectionStatusIndicator isConnected={false} />
+                      </div>
                       <span className="text-sm text-slate-600 dark:text-slate-300 flex-1">{label}</span>
-                      <svg className="h-4 w-4 text-slate-400 dark:text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                      <svg className="h-4 w-4 text-slate-400 dark:text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                      </svg>
                     </div>
                   ))}
                 </div>
