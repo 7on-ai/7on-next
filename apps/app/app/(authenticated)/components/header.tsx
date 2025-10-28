@@ -17,17 +17,23 @@ type HeaderProps = {
 };
 
 export const Header = ({ pages, page, children }: HeaderProps) => (
-  <header className="sticky top-0 z-40 bg-transparent backdrop-blur-md border-b border-white/10">
-    <div className="flex items-center gap-2 px-4">
+  <header
+    className="
+      sticky top-0 z-10 
+      bg-transparent backdrop-blur-md 
+      border-b border-white/10
+    "
+  >
+    <div className="flex items-center gap-2 px-4 py-2">
       <SidebarTrigger className="-ml-1" />
       <Separator orientation="vertical" className="mr-2 h-4" />
       <Breadcrumb>
         <BreadcrumbList>
-          {pages.map((page, index) => (
-            <Fragment key={page}>
+          {pages.map((p, index) => (
+            <Fragment key={p}>
               {index > 0 && <BreadcrumbSeparator className="hidden md:block" />}
               <BreadcrumbItem className="hidden md:block">
-                <BreadcrumbLink href="#">{page}</BreadcrumbLink>
+                <BreadcrumbLink href="#">{p}</BreadcrumbLink>
               </BreadcrumbItem>
             </Fragment>
           ))}
