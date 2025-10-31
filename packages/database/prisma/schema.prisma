@@ -20,7 +20,7 @@ model User {
   apiCallsCount    Int              @default(0)
   usageResetAt     DateTime         @default(now())
 
-  // ===== NEW: N8N & Northflank Fields =====
+  // ===== N8N & Northflank Fields =====
   n8nUrl                   String?
   n8nUserEmail             String?
   n8nEncryptionKey         String?
@@ -34,12 +34,18 @@ model User {
   templateCompletedAt      DateTime?
   n8nSetupError            String?
 
+  // ===== NEW: Postgres Memories Fields =====
+  n8nPostgresCredentialId   String?   // Credential ID ใน n8n
+  postgresSchemaInitialized Boolean   @default(false) // ตรวจสอบว่าสร้าง schema แล้ว
+  postgresSetupError        String?   // Error message ถ้าสร้างไม่สำเร็จ
+  postgresSetupAt           DateTime? // เวลาที่ setup เสร็จ
+
   subscriptions       Subscription[]
   usageLogs           UsageLog[]
   nangoConnections    NangoConnection[]
   apiUsage            ApiUsage[]
   usageSummaries      UsageSummary[]
-  socialCredentials   SocialCredential[] // NEW relation
+  socialCredentials   SocialCredential[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -48,9 +54,9 @@ model User {
   @@index([stripeCustomerId])
   @@index([email])
   @@index([northflankProjectId])
+  @@index([postgresSchemaInitialized])
 }
 
-// ===== NEW: Social Credentials Table =====
 model SocialCredential {
   id String @id @default(cuid())
 

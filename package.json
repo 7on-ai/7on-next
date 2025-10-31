@@ -27,6 +27,7 @@
     "@repo/typescript-config": "workspace:*",
     "@turbo/gen": "^2.5.3",
     "@types/node": "^22.15.21",
+    "@types/pg": "^8.11.6",
     "@types/three": "^0.180.0",
     "flag": "^5.0.1",
     "tsup": "^8.5.0",
@@ -46,6 +47,7 @@
     "commander": "^14.0.0",
     "leva": "^0.10.0",
     "maath": "^0.10.8",
+    "pg": "^8.16.3",
     "r3f-perf": "^7.2.3",
     "three": "^0.180.0"
   },
