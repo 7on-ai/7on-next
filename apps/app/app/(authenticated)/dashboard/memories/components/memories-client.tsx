@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@repo/design-system/components/ui/card';
-import { Button } from '@repo/design-system/components/ui/button';
-import { Loader2, Database, AlertCircle, RefreshCw, Trash2 } from 'lucide-react';
+"use client";
+
+import { useEffect, useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@repo/design-system/components/ui/card";
+import { Button } from "@repo/design-system/components/ui/button";
+import { Loader2, Database, AlertCircle, RefreshCw, Trash2 } from "lucide-react";
 
 interface Memory {
   id: string;
