@@ -224,20 +224,18 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * 🔧 แก้ไข: ใช้ Secret Groups API เพื่อดึง DATABASE_URL
- */
-/**
- * 🔧 แก้ไข: ใช้ Secret Groups API เพื่อดึง DATABASE_URL
+ * ✅ FIXED: ใช้ Addons API แทน Secret Groups API
+ * วิธีที่ถูกต้องตาม Northflank API Documentation
  */
 async function getPostgresConnection(projectId: string) {
   try {
-    console.log('📝 Getting Postgres connection from secret groups...');
-
+    console.log('📝 Getting Postgres connection from Northflank Addons API...');
+    
     // ========================================
-    // STEP 1: List Secret Groups
+    // STEP 1: List all addons in the project
     // ========================================
-    const secretGroupsResponse = await fetch(
-      `https://api.northflank.com/v1/projects/${projectId}/secret-groups`,
+    const addonsResponse = await fetch(
+      `https://api.northflank.com/v1/projects/${projectId}/addons`,
       {
         headers: {
           Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
@@ -245,48 +243,53 @@ async function getPostgresConnection(projectId: string) {
         },
       }
     );
-
-    if (!secretGroupsResponse.ok) {
-      const errorText = await secretGroupsResponse.text();
-      console.error('❌ Failed to list secret groups:', secretGroupsResponse.status, errorText);
+    
+    if (!addonsResponse.ok) {
+      const errorText = await addonsResponse.text();
+      console.error('❌ Failed to list addons:', addonsResponse.status, errorText);
       return null;
     }
-
-    const secretGroupsData = await secretGroupsResponse.json();
-    console.log('📦 Found', secretGroupsData.data?.secretGroups?.length || 0, 'secret groups');
-
+    
+    const addonsData = await addonsResponse.json();
+    console.log('📦 Found', addonsData.data?.addons?.length || 0, 'addons');
+    
     // ========================================
-    // STEP 2: Find database secret group
+    // STEP 2: Find PostgreSQL addon
     // ========================================
-    let databaseSecretGroup = null;
-    const secretGroups = secretGroupsData.data?.secretGroups || [];
-
-    for (const group of secretGroups) {
-      const groupName = (group.name || '').toLowerCase();
-      if (groupName.includes('database') || groupName.includes('postgres') || groupName.includes('db')) {
-        databaseSecretGroup = group;
-        console.log('✅ Found database secret group:', group.name);
-        break;
-      }
-    }
-
-    if (!databaseSecretGroup && secretGroups.length > 0) {
-      databaseSecretGroup = secretGroups[0];
-      console.log('⚠️ Using first secret group:', databaseSecretGroup.name);
-    }
-
-    if (!databaseSecretGroup) {
-      console.error('❌ No secret group found');
+    const addons = addonsData.data?.addons || [];
+    const postgresAddon = addons.find(
+      (addon: any) => addon.spec?.type === 'postgresql'
+    );
+    
+    if (!postgresAddon) {
+      console.error('❌ No PostgreSQL addon found in project');
+      console.log('Available addons:', addons.map((a: any) => ({
+        id: a.id,
+        name: a.name,
+        type: a.spec?.type,
+      })));
       return null;
     }
-
+    
+    console.log('✅ PostgreSQL addon found:', {
+      id: postgresAddon.id,
+      name: postgresAddon.name,
+      status: postgresAddon.status,
+    });
+    
+    // Check if addon is running
+    if (postgresAddon.status !== 'running') {
+      console.error('❌ PostgreSQL addon is not running:', postgresAddon.status);
+      return null;
+    }
+    
     // ========================================
-    // ✅ STEP 3 (PATCHED): Get Secret Values
+    // STEP 3: Get addon details with connection info
     // ========================================
-    console.log('📝 Getting secrets from group:', databaseSecretGroup.id);
-
-    const secretsResponse = await fetch(
-      `https://api.northflank.com/v1/projects/${projectId}/secret-groups/${databaseSecretGroup.id}/secrets`,
+    console.log('📝 Getting PostgreSQL addon connection details...');
+    
+    const addonDetailsResponse = await fetch(
+      `https://api.northflank.com/v1/projects/${projectId}/addons/${postgresAddon.id}`,
       {
         headers: {
           Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
@@ -294,68 +297,81 @@ async function getPostgresConnection(projectId: string) {
         },
       }
     );
-
-    if (!secretsResponse.ok) {
-      const errorText = await secretsResponse.text();
-      console.error('❌ Failed to get secret values:', secretsResponse.status, errorText);
+    
+    if (!addonDetailsResponse.ok) {
+      const errorText = await addonDetailsResponse.text();
+      console.error('❌ Failed to get addon details:', addonDetailsResponse.status, errorText);
       return null;
     }
-
-    const secretsJson = await secretsResponse.json();
-    const secrets = secretsJson.data?.secrets || {};
-
-    console.log('📦 Available secrets:', Object.keys(secrets));
-
-    // ========================================
-    // STEP 4: Extract Connection Info
-    // ========================================
-    let connectionString =
-      secrets.DATABASE_URL?.value ||
-      secrets.POSTGRES_URL?.value ||
-      secrets.DB_URL?.value ||
-      secrets.CONNECTION_STRING?.value;
-
-    if (connectionString) {
-      console.log('✅ Found connection string in secrets');
-      const parsed = parsePostgresUrl(connectionString);
-      if (parsed) {
-        return {
-          connectionString,
-          config: parsed,
-        };
-      }
+    
+    const addonDetails = await addonDetailsResponse.json();
+    const connection = addonDetails.data?.connection;
+    
+    if (!connection) {
+      console.error('❌ No connection details found in addon');
+      console.log('Addon details:', JSON.stringify(addonDetails, null, 2));
+      return null;
     }
-
-    const host = secrets.DB_HOST?.value || secrets.POSTGRES_HOST?.value || secrets.HOST?.value;
-    const port = secrets.DB_PORT?.value || secrets.POSTGRES_PORT?.value || secrets.PORT?.value || '5432';
-    const database = secrets.DB_NAME?.value || secrets.POSTGRES_DB?.value || secrets.DATABASE?.value;
-    const user = secrets.DB_USER?.value || secrets.POSTGRES_USER?.value || secrets.USER?.value;
-    const password = secrets.DB_PASSWORD?.value || secrets.POSTGRES_PASSWORD?.value || secrets.PASSWORD?.value;
-
-    if (host && user && password && database) {
-      console.log('✅ Found connection details in separate fields');
-      connectionString = `postgresql://${user}:${password}@${host}:${port}/${database}?sslmode=require`;
-      return {
-        connectionString,
-        config: {
-          host,
-          port: parseInt(String(port), 10),
-          database,
-          user,
-          password,
-        },
-      };
-    }
-
-    console.error('❌ No valid connection info found in secrets');
-    console.log('Available secret keys:', Object.keys(secrets));
-    return null;
+    
+    console.log('✅ Connection details retrieved:', {
+      host: connection.host,
+      port: connection.port,
+      database: connection.database,
+      hasConnectionString: !!connection.connectionString,
+    });
+    
+    // ========================================
+    // STEP 4: Return connection information
+    // ========================================
+    const connectionString = connection.connectionString || 
+      `postgresql://${connection.user}:${connection.password}@${connection.host}:${connection.port}/${connection.database}?sslmode=require`;
+    
+    return {
+      connectionString,
+      config: {
+        host: connection.host,
+        port: parseInt(String(connection.port || '5432'), 10),
+        database: connection.database,
+        user: connection.user,
+        password: connection.password,
+      },
+    };
+    
   } catch (error) {
     console.error('💥 Error getting Postgres connection:', error);
     if (error instanceof Error) {
       console.error('Error message:', error.message);
       console.error('Error stack:', error.stack);
     }
+    return null;
+  }
+}
+
+/**
+ * Helper: Parse Postgres URL (kept for reference, but not needed anymore)
+ */
+function parsePostgresUrl(url: string) {
+  try {
+    // postgresql://user:password@host:port/database
+    const regex = /postgresql:\/\/([^:]+):([^@]+)@([^:]+):(\d+)\/([^?]+)/;
+    const match = url.match(regex);
+    
+    if (!match) {
+      console.warn('⚠️ Could not parse connection string');
+      return null;
+    }
+    
+    const [, user, password, host, port, database] = match;
+    
+    return {
+      host,
+      port: parseInt(port, 10),
+      database,
+      user,
+      password,
+    };
+  } catch (error) {
+    console.error('❌ Error parsing URL:', error);
     return null;
   }
 }
