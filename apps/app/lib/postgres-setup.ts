@@ -15,13 +15,12 @@ export async function initializeUserPostgresSchema(connectionString: string): Pr
     await client.query(`CREATE SCHEMA IF NOT EXISTS user_data_schema`);
     console.log('✅ Schema created: user_data_schema');
     
-    // Create memories table
+    // Create memories table (ลบ embedding vector เพราะ Northflank ไม่มี pgvector)
     await client.query(`
       CREATE TABLE IF NOT EXISTS user_data_schema.memories (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         content TEXT NOT NULL,
         metadata JSONB DEFAULT '{}'::jsonb,
-        embedding vector(1536),
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )
@@ -86,7 +85,7 @@ export async function initializeUserPostgresSchema(connectionString: string): Pr
     return true;
   } catch (error) {
     console.error('❌ Error initializing postgres schema:', error);
-    throw error;
+    return false;
   } finally {
     await client.end();
     console.log('✅ Postgres connection closed');

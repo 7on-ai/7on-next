@@ -660,7 +660,70 @@ async function monitorN8nDeployment(
             preGeneratedApiKey
           );
 
-          // Update database with final results
+          // ========================================
+          // 🆕 POSTGRES SETUP - เพิ่มส่วนนี้
+          // ========================================
+          console.log('🗄️ POSTGRES SETUP: Starting...');
+          
+          let postgresCredentialId: string | null = null;
+          let postgresSetupError: string | null = null;
+          let postgresSchemaInitialized = false;
+
+          try {
+            // 1. Get Postgres connection from Northflank
+            console.log('📝 Step 1: Getting Postgres connection from Northflank...');
+            const postgresConnection = await getPostgresConnection(projectId);
+
+            if (!postgresConnection) {
+              throw new Error('Failed to get Postgres connection from Northflank');
+            }
+
+            console.log('✅ Postgres connection retrieved:', {
+              host: postgresConnection.config.host,
+              database: postgresConnection.config.database,
+            });
+
+            // 2. Initialize schema and tables
+            console.log('📝 Step 2: Initializing Postgres schema and tables...');
+            const { initializeUserPostgresSchema } = await import('@/lib/postgres-setup');
+            
+            const schemaSuccess = await initializeUserPostgresSchema(
+              postgresConnection.connectionString
+            );
+
+            if (!schemaSuccess) {
+              throw new Error('Failed to initialize Postgres schema');
+            }
+
+            postgresSchemaInitialized = true;
+            console.log('✅ Postgres schema initialized successfully');
+
+            // 3. Create Postgres credential in n8n
+            console.log('📝 Step 3: Creating Postgres credential in n8n...');
+            const { createPostgresCredentialInN8n } = await import('@/lib/n8n-credentials');
+            
+            const credentialId = await createPostgresCredentialInN8n({
+              n8nUrl: n8nData.n8nUrl,
+              n8nEmail: userEmail,
+              n8nPassword: `7On${encryptionKey}`,
+              postgresConfig: postgresConnection.config,
+            });
+
+            if (!credentialId) {
+              throw new Error('Failed to create Postgres credential in n8n');
+            }
+
+            postgresCredentialId = credentialId;
+            console.log('✅ Postgres credential created in n8n:', credentialId);
+
+          } catch (postgresError) {
+            console.error('❌ Postgres setup failed:', postgresError);
+            postgresSetupError = (postgresError as Error).message;
+          }
+
+          // ========================================
+          // Update database with all results
+          // ========================================
           console.log('ULTRA FAST: Updating database with final results...');
           await db.user.update({
             where: { id: userId },
@@ -674,11 +737,21 @@ async function monitorN8nDeployment(
               northflankProjectStatus: 'ready',
               northflankSecretData: n8nData.allSecrets,
               templateCompletedAt: new Date(),
+              // 🆕 Postgres fields
+              postgresSchemaInitialized,
+              n8nPostgresCredentialId: postgresCredentialId,
+              postgresSetupError,
+              postgresSetupAt: postgresSchemaInitialized ? new Date() : null,
               updatedAt: new Date(),
             },
           });
 
-          console.log('ULTRA FAST: SUCCESS! N8N setup completed with Neon database');
+          if (postgresSchemaInitialized && postgresCredentialId) {
+            console.log('✅ COMPLETE: N8N + Postgres setup finished successfully!');
+          } else {
+            console.log('⚠️ PARTIAL: N8N ready but Postgres setup had issues');
+          }
+          
           return;
         }
       }
@@ -701,4 +774,87 @@ async function monitorN8nDeployment(
       updatedAt: new Date(),
     },
   });
+}
+
+/**
+ * Helper: Get Postgres connection from Northflank addon
+ */
+async function getPostgresConnection(projectId: string) {
+  try {
+    console.log('Getting Postgres connection for project:', projectId);
+    
+    // 1. List all addons in the project
+    const addonsResponse = await fetch(
+      `https://api.northflank.com/v1/projects/${projectId}/addons`,
+      {
+        headers: {
+          Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (!addonsResponse.ok) {
+      console.error('Failed to list addons:', await addonsResponse.text());
+      return null;
+    }
+
+    const addons = await addonsResponse.json();
+    
+    // 2. Find Postgres addon
+    const postgresAddon = addons.data?.find(
+      (addon: any) => addon.spec?.type === 'postgresql'
+    );
+
+    if (!postgresAddon) {
+      console.log('❌ No Postgres addon found in project');
+      return null;
+    }
+
+    console.log('✅ Postgres addon found:', postgresAddon.id);
+
+    // 3. Get connection details
+    const connectionResponse = await fetch(
+      `https://api.northflank.com/v1/projects/${projectId}/addons/${postgresAddon.id}`,
+      {
+        headers: {
+          Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (!connectionResponse.ok) {
+      console.error('Failed to get addon details:', await connectionResponse.text());
+      return null;
+    }
+
+    const details = await connectionResponse.json();
+    const connection = details.data?.connection;
+
+    if (!connection) {
+      console.log('❌ No connection details found');
+      return null;
+    }
+
+    console.log('✅ Connection details retrieved:', {
+      host: connection.host,
+      port: connection.port,
+      database: connection.database,
+    });
+
+    return {
+      connectionString: connection.connectionString,
+      config: {
+        host: connection.host,
+        port: parseInt(connection.port || '5432'),
+        database: connection.database,
+        user: connection.user,
+        password: connection.password,
+      },
+    };
+  } catch (error) {
+    console.error('❌ Error getting Postgres connection:', error);
+    return null;
+  }
 }

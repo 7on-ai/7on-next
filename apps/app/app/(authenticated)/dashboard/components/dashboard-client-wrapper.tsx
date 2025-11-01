@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@repo/design-system/components/ui/button";
-import { Github, Linkedin, Sparkles, Loader2, Check } from "lucide-react";
+import { Github, Linkedin, Sparkles, Loader2, Check, Database, ArrowRight } from "lucide-react";
 import { useSubscription } from "@repo/auth/hooks/use-subscription";
 import type { SubscriptionTier } from "@repo/auth/client";
 import { GL } from "@/components/gl";
@@ -133,6 +133,13 @@ interface ConnectionStatus {
   [key: string]: ConnectionState;
 }
 
+interface MemoriesStatus {
+  isInitialized: boolean;
+  hasCredential: boolean;
+  totalMemories: number;
+  setupError: string | null;
+}
+
 /* ----------------------- Connection Status Indicator ---------------------- */
 const ConnectionStatusIndicator = ({ status }: { status: ConnectionState }) => {
   const isConnected = status === 'connected';
@@ -167,6 +174,12 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
   const [loadingConnect, setLoadingConnect] = useState<string | null>(null);
   const [hovering, setHovering] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({});
+  const [memoriesStatus, setMemoriesStatus] = useState<MemoriesStatus>({
+    isInitialized: false,
+    hasCredential: false,
+    totalMemories: 0,
+    setupError: null,
+  });
 
   const services = [
     { service: "google" as const, label: "Google", icon: <GoogleIcon /> },
@@ -209,7 +222,6 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
         credentials.forEach((cred: any) => {
           const normalizedProvider = cred.provider.toLowerCase().replace('google-oauth2', 'google');
           
-          // Map all non-connected states to 'disconnected' (including errors)
           if (cred.injectedToN8n && !cred.injectionError) {
             statusMap[normalizedProvider] = 'connected';
           } else {
@@ -217,7 +229,6 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
           }
         });
         
-        // Set disconnected for services without credentials
         services.forEach(({ service }) => {
           if (!statusMap[service]) {
             statusMap[service] = 'disconnected';
@@ -252,35 +263,74 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
     }
   }, [userId]);
 
+  // 🆕 Fetch Memories Status
+  const fetchMemoriesStatus = useCallback(async () => {
+    if (!userId) return;
+    
+    try {
+      // Get user postgres status
+      const userResponse = await fetch(`/api/user/n8n-status?userId=${userId}`);
+      if (!userResponse.ok) return;
+      
+      const userData = await userResponse.json();
+      
+      // Get memories count if initialized
+      let totalMemories = 0;
+      if (userData.postgres_schema_initialized) {
+        try {
+          const memoriesResponse = await fetch('/api/memories');
+          if (memoriesResponse.ok) {
+            const memoriesData = await memoriesResponse.json();
+            totalMemories = memoriesData.count || 0;
+          }
+        } catch (err) {
+          console.log('Could not fetch memories count:', err);
+        }
+      }
+      
+      setMemoriesStatus({
+        isInitialized: userData.postgres_schema_initialized || false,
+        hasCredential: !!userData.n8n_postgres_credential_id,
+        totalMemories,
+        setupError: userData.postgres_setup_error || null,
+      });
+    } catch (e) {
+      console.error("Error fetching memories status:", e);
+    }
+  }, [userId]);
+
   // Initial fetch on mount
   useEffect(() => {
     fetchStats();
     fetchConnectionStatus();
-  }, [fetchStats, fetchConnectionStatus]);
+    fetchMemoriesStatus();
+  }, [fetchStats, fetchConnectionStatus, fetchMemoriesStatus]);
 
   // Polling every 60 seconds
   useEffect(() => {
     const interval = setInterval(() => {
       fetchStats();
       fetchConnectionStatus();
+      fetchMemoriesStatus();
     }, POLLING_INTERVAL);
     
     return () => clearInterval(interval);
-  }, [fetchStats, fetchConnectionStatus]);
+  }, [fetchStats, fetchConnectionStatus, fetchMemoriesStatus]);
 
   // Refresh when tab becomes visible
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        console.log('Tab visible - refreshing connection status');
+        console.log('Tab visible - refreshing status');
         fetchStats();
         fetchConnectionStatus();
+        fetchMemoriesStatus();
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [fetchStats, fetchConnectionStatus]);
+  }, [fetchStats, fetchConnectionStatus, fetchMemoriesStatus]);
 
   // Handle OAuth callback
   useEffect(() => {
@@ -291,13 +341,11 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
     if (connected && status === "success") {
       showToast(`✅ Successfully connected ${connected}!`);
       clearUrlParams(["connected", "status", "timestamp"]);
-      // Immediate refresh after successful connection
       fetchStats();
       fetchConnectionStatus();
     } else if (error) {
       showToast(`❌ Connection failed: ${decodeURIComponent(error)}`);
       clearUrlParams(["error", "timestamp"]);
-      // Immediate refresh after failed connection
       fetchConnectionStatus();
     }
   }, [searchParams?.toString(), fetchStats, fetchConnectionStatus]);
@@ -333,6 +381,34 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
       setLoadingConnect(null);
     }
   };
+
+  // Get Memories status display
+  const getMemoriesStatusDisplay = () => {
+    if (memoriesStatus.setupError) {
+      return {
+        text: 'Setup Error',
+        color: 'text-red-500',
+        bgColor: 'bg-red-500/10',
+        icon: '❌'
+      };
+    }
+    if (!memoriesStatus.isInitialized || !memoriesStatus.hasCredential) {
+      return {
+        text: 'Setting Up...',
+        color: 'text-yellow-500',
+        bgColor: 'bg-yellow-500/10',
+        icon: '⏳'
+      };
+    }
+    return {
+      text: 'Ready',
+      color: 'text-green-500',
+      bgColor: 'bg-green-500/10',
+      icon: '✅'
+    };
+  };
+
+  const memoriesStatusDisplay = getMemoriesStatusDisplay();
 
   return (
     <>
@@ -464,6 +540,86 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
                 </div>
               </div>
             )}
+          </div>
+
+          {/* 🆕 Card 4: Memories Database Status */}
+          <div className="mt-6">
+            <Link href="/dashboard/memories" className="block group">
+              <div className="p-6 rounded-2xl bg-white/30 dark:bg-white/10 border border-white/30 dark:border-white/10 shadow-[0_8px_32px_rgba(2,6,23,0.08)] transition-all hover:bg-white/40 dark:hover:bg-white/8 hover:shadow-xl">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center">
+                      <Database className="h-5 w-5 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="text-slate-800 dark:text-slate-200 text-lg font-bold">
+                        AI Memories Database
+                      </h3>
+                      <p className="text-xs text-slate-600 dark:text-slate-400">
+                        Postgres storage for AI context
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <ArrowRight className="h-5 w-5 text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300 group-hover:translate-x-1 transition-all" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Status Badge */}
+                  <div className="flex flex-col gap-2">
+                    <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                      Status
+                    </span>
+                    <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg ${memoriesStatusDisplay.bgColor} w-fit`}>
+                      <span className="text-sm">{memoriesStatusDisplay.icon}</span>
+                      <span className={`text-sm font-semibold ${memoriesStatusDisplay.color}`}>
+                        {memoriesStatusDisplay.text}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Memories Count */}
+                  <div className="flex flex-col gap-2">
+                    <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                      Total Memories
+                    </span>
+                    <div className="text-2xl font-bold text-slate-900 dark:text-white">
+                      {memoriesStatus.isInitialized ? memoriesStatus.totalMemories : '---'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Error Message */}
+                {memoriesStatus.setupError && (
+                  <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+                    <p className="text-xs text-red-600 dark:text-red-400">
+                      ⚠️ {memoriesStatus.setupError}
+                    </p>
+                  </div>
+                )}
+
+                {/* Setup Progress */}
+                {!memoriesStatus.isInitialized && !memoriesStatus.setupError && (
+                  <div className="mt-4 flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Setting up database schema...</span>
+                  </div>
+                )}
+
+                {/* Ready State */}
+                {memoriesStatus.isInitialized && memoriesStatus.hasCredential && (
+                  <div className="mt-4 flex items-center justify-between">
+                    <span className="text-sm text-slate-600 dark:text-slate-400">
+                      Click to view and manage memories
+                    </span>
+                    <div className="flex items-center gap-1 text-sm text-indigo-600 dark:text-indigo-400 font-medium">
+                      View Details
+                      <ArrowRight className="h-4 w-4" />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Link>
           </div>
 
           {/* Toast Notification */}
