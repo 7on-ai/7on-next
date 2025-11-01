@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Fetch user's N8N status
     const user = await db.user.findUnique({
       where: { id: userId },
       select: {
@@ -25,11 +26,6 @@ export async function GET(request: NextRequest) {
         northflankProjectStatus: true,
         templateCompletedAt: true,
         n8nSetupError: true,
-        // 🆕 เพิ่ม Postgres fields
-        postgresSchemaInitialized: true,
-        n8nPostgresCredentialId: true,
-        postgresSetupError: true,
-        postgresSetupAt: true,
       },
     });
 
@@ -40,6 +36,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Count injected providers
     const injectedProviders = await db.socialCredential.count({
       where: {
         userId: userId,
@@ -47,6 +44,7 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    // Count all social providers
     const totalProviders = await db.socialCredential.count({
       where: {
         userId: userId,
@@ -64,11 +62,6 @@ export async function GET(request: NextRequest) {
       injected_providers_count: injectedProviders,
       social_providers_count: totalProviders,
       setup_error: user.n8nSetupError,
-      // 🆕 เพิ่ม Postgres status
-      postgres_schema_initialized: user.postgresSchemaInitialized,
-      n8n_postgres_credential_id: user.n8nPostgresCredentialId,
-      postgres_setup_error: user.postgresSetupError,
-      postgres_setup_at: user.postgresSetupAt,
     });
   } catch (error) {
     console.error('Error fetching N8N status:', error);
