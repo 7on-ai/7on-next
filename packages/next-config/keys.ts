@@ -7,13 +7,18 @@ export const keys = () =>
     extends: [vercel()],
     server: {
       ANALYZE: z.string().optional(),
-
       // Added by Vercel
       NEXT_RUNTIME: z.enum(['nodejs', 'edge']).optional(),
     },
     client: {
-      NEXT_PUBLIC_APP_URL: z.string().url(),
-      NEXT_PUBLIC_WEB_URL: z.string().url(),
+      NEXT_PUBLIC_APP_URL:
+        process.env.VERCEL === '1'
+          ? z.string().url()
+          : z.string().url().optional().default('http://localhost:3000'),
+      NEXT_PUBLIC_WEB_URL:
+        process.env.VERCEL === '1'
+          ? z.string().url()
+          : z.string().url().optional().default('http://localhost:3001'),
       NEXT_PUBLIC_API_URL: z.string().url().optional(),
       NEXT_PUBLIC_DOCS_URL: z.string().url().optional(),
     },
