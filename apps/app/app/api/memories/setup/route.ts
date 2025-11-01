@@ -226,10 +226,13 @@ export async function POST(request: NextRequest) {
 /**
  * 🔧 แก้ไข: ใช้ Secret Groups API เพื่อดึง DATABASE_URL
  */
+/**
+ * 🔧 แก้ไข: ใช้ Secret Groups API เพื่อดึง DATABASE_URL
+ */
 async function getPostgresConnection(projectId: string) {
   try {
     console.log('📝 Getting Postgres connection from secret groups...');
-    
+
     // ========================================
     // STEP 1: List Secret Groups
     // ========================================
@@ -242,24 +245,22 @@ async function getPostgresConnection(projectId: string) {
         },
       }
     );
-    
+
     if (!secretGroupsResponse.ok) {
       const errorText = await secretGroupsResponse.text();
       console.error('❌ Failed to list secret groups:', secretGroupsResponse.status, errorText);
       return null;
     }
-    
+
     const secretGroupsData = await secretGroupsResponse.json();
     console.log('📦 Found', secretGroupsData.data?.secretGroups?.length || 0, 'secret groups');
-    
+
     // ========================================
     // STEP 2: Find database secret group
     // ========================================
     let databaseSecretGroup = null;
-    
     const secretGroups = secretGroupsData.data?.secretGroups || [];
-    
-    // ลองหา secret group ที่มีชื่อเกี่ยวกับ database
+
     for (const group of secretGroups) {
       const groupName = (group.name || '').toLowerCase();
       if (groupName.includes('database') || groupName.includes('postgres') || groupName.includes('db')) {
@@ -268,25 +269,24 @@ async function getPostgresConnection(projectId: string) {
         break;
       }
     }
-    
-    // ถ้าไม่เจอ ลองใช้ตัวแรก
+
     if (!databaseSecretGroup && secretGroups.length > 0) {
       databaseSecretGroup = secretGroups[0];
       console.log('⚠️ Using first secret group:', databaseSecretGroup.name);
     }
-    
+
     if (!databaseSecretGroup) {
       console.error('❌ No secret group found');
       return null;
     }
-    
+
     // ========================================
-    // STEP 3: Get Secret Details
+    // ✅ STEP 3 (PATCHED): Get Secret Values
     // ========================================
     console.log('📝 Getting secrets from group:', databaseSecretGroup.id);
-    
-    const secretDetailsResponse = await fetch(
-      `https://api.northflank.com/v1/projects/${projectId}/secret-groups/${databaseSecretGroup.id}`,
+
+    const secretsResponse = await fetch(
+      `https://api.northflank.com/v1/projects/${projectId}/secret-groups/${databaseSecretGroup.id}/secrets`,
       {
         headers: {
           Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
@@ -294,34 +294,30 @@ async function getPostgresConnection(projectId: string) {
         },
       }
     );
-    
-    if (!secretDetailsResponse.ok) {
-      const errorText = await secretDetailsResponse.text();
-      console.error('❌ Failed to get secret details:', secretDetailsResponse.status, errorText);
+
+    if (!secretsResponse.ok) {
+      const errorText = await secretsResponse.text();
+      console.error('❌ Failed to get secret values:', secretsResponse.status, errorText);
       return null;
     }
-    
-    const secretDetails = await secretDetailsResponse.json();
-    const secrets = secretDetails.data?.data || {};
-    
+
+    const secretsJson = await secretsResponse.json();
+    const secrets = secretsJson.data?.secrets || {};
+
     console.log('📦 Available secrets:', Object.keys(secrets));
-    
+
     // ========================================
     // STEP 4: Extract Connection Info
     // ========================================
-    
-    // ลองหา DATABASE_URL
-    let connectionString = secrets.DATABASE_URL || 
-                          secrets.POSTGRES_URL || 
-                          secrets.DB_URL ||
-                          secrets.CONNECTION_STRING;
-    
+    let connectionString =
+      secrets.DATABASE_URL?.value ||
+      secrets.POSTGRES_URL?.value ||
+      secrets.DB_URL?.value ||
+      secrets.CONNECTION_STRING?.value;
+
     if (connectionString) {
       console.log('✅ Found connection string in secrets');
-      
-      // Parse connection string
       const parsed = parsePostgresUrl(connectionString);
-      
       if (parsed) {
         return {
           connectionString,
@@ -329,19 +325,16 @@ async function getPostgresConnection(projectId: string) {
         };
       }
     }
-    
-    // ถ้าไม่มี connection string แบบเดียว ลองหาแยกเป็น fields
-    const host = secrets.DB_HOST || secrets.POSTGRES_HOST || secrets.HOST;
-    const port = secrets.DB_PORT || secrets.POSTGRES_PORT || secrets.PORT || '5432';
-    const database = secrets.DB_NAME || secrets.POSTGRES_DB || secrets.DATABASE || secrets.DB_DATABASE;
-    const user = secrets.DB_USER || secrets.POSTGRES_USER || secrets.USER || secrets.DB_USERNAME;
-    const password = secrets.DB_PASSWORD || secrets.POSTGRES_PASSWORD || secrets.PASSWORD;
-    
+
+    const host = secrets.DB_HOST?.value || secrets.POSTGRES_HOST?.value || secrets.HOST?.value;
+    const port = secrets.DB_PORT?.value || secrets.POSTGRES_PORT?.value || secrets.PORT?.value || '5432';
+    const database = secrets.DB_NAME?.value || secrets.POSTGRES_DB?.value || secrets.DATABASE?.value;
+    const user = secrets.DB_USER?.value || secrets.POSTGRES_USER?.value || secrets.USER?.value;
+    const password = secrets.DB_PASSWORD?.value || secrets.POSTGRES_PASSWORD?.value || secrets.PASSWORD?.value;
+
     if (host && user && password && database) {
       console.log('✅ Found connection details in separate fields');
-      
       connectionString = `postgresql://${user}:${password}@${host}:${port}/${database}?sslmode=require`;
-      
       return {
         connectionString,
         config: {
@@ -353,10 +346,9 @@ async function getPostgresConnection(projectId: string) {
         },
       };
     }
-    
+
     console.error('❌ No valid connection info found in secrets');
     console.log('Available secret keys:', Object.keys(secrets));
-    
     return null;
   } catch (error) {
     console.error('💥 Error getting Postgres connection:', error);
@@ -364,35 +356,6 @@ async function getPostgresConnection(projectId: string) {
       console.error('Error message:', error.message);
       console.error('Error stack:', error.stack);
     }
-    return null;
-  }
-}
-
-/**
- * Helper: Parse Postgres URL
- */
-function parsePostgresUrl(url: string) {
-  try {
-    // postgresql://user:password@host:port/database
-    const regex = /postgresql:\/\/([^:]+):([^@]+)@([^:]+):(\d+)\/([^?]+)/;
-    const match = url.match(regex);
-    
-    if (!match) {
-      console.warn('⚠️ Could not parse connection string');
-      return null;
-    }
-    
-    const [, user, password, host, port, database] = match;
-    
-    return {
-      host,
-      port: parseInt(port, 10),
-      database,
-      user,
-      password,
-    };
-  } catch (error) {
-    console.error('❌ Error parsing URL:', error);
     return null;
   }
 }
