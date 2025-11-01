@@ -38,12 +38,15 @@ const LinkedInIcon = () => (
 );
 
 /* ------------------------------- Constants -------------------------------- */
+// ✅ แก้ไข: ใช้ AUTH0_CONNECT_CLIENT_ID เดียวสำหรับทุก provider
+const AUTH0_CONNECT_CLIENT_ID = process.env.NEXT_PUBLIC_AUTH0_CONNECT_CLIENT_ID ?? "";
+
 const CLIENT_IDS = {
-  google: process.env.NEXT_PUBLIC_AUTH0_GOOGLE_CLIENT_ID ?? "",
-  spotify: process.env.NEXT_PUBLIC_AUTH0_SPOTIFY_CLIENT_ID ?? "",
-  discord: process.env.NEXT_PUBLIC_AUTH0_DISCORD_CLIENT_ID ?? "",
-  github: process.env.NEXT_PUBLIC_AUTH0_GITHUB_CLIENT_ID ?? "",
-  linkedin: process.env.NEXT_PUBLIC_AUTH0_LINKEDIN_CLIENT_ID ?? "",
+  google: AUTH0_CONNECT_CLIENT_ID,
+  spotify: AUTH0_CONNECT_CLIENT_ID,
+  discord: AUTH0_CONNECT_CLIENT_ID,
+  github: AUTH0_CONNECT_CLIENT_ID,
+  linkedin: AUTH0_CONNECT_CLIENT_ID,
 };
 
 const BASE_SCOPES: Record<string, string> = {
@@ -62,7 +65,7 @@ const TIER_FEATURES: Record<string, string[]> = {
   BUSINESS: ["google", "github", "spotify", "discord", "linkedin"],
 };
 
-const POLLING_INTERVAL = 60000; // 60 seconds
+const POLLING_INTERVAL = 60000;
 
 /* ------------------------------- Utilities -------------------------------- */
 const createOAuthState = (userId: string, service: string): string => {
@@ -79,11 +82,16 @@ const createOAuthState = (userId: string, service: string): string => {
   }
 };
 
+// ✅ แก้ไข: ใช้ redirect_uri ที่ถูกต้อง
 const buildAuthorizationUrl = (service: keyof typeof CLIENT_IDS, state: string): string => {
+  // ✅ ใช้ NEXT_PUBLIC_AUTH0_CALLBACK_URL ที่ตั้งค่าไว้
+  const redirectUri = process.env.NEXT_PUBLIC_AUTH0_CALLBACK_URL || 
+                      `${process.env.NEXT_PUBLIC_APP_URL}/api/oauth-callback`;
+  
   const params = new URLSearchParams({
     response_type: "code",
     client_id: CLIENT_IDS[service]!,
-    redirect_uri: `${process.env.NEXT_PUBLIC_AUTH0_CALLBACK_URL ?? process.env.NEXT_PUBLIC_APP_URL + "/api/oauth-callback"}`,
+    redirect_uri: redirectUri, // ✅ แก้ไขตรงนี้
     scope: BASE_SCOPES[service] || "",
     state,
     audience: `https://${process.env.NEXT_PUBLIC_AUTH0_DOMAIN}/api/v2/`,
@@ -98,6 +106,13 @@ const buildAuthorizationUrl = (service: keyof typeof CLIENT_IDS, state: string):
   if (service === "spotify") {
     params.append("show_dialog", "true");
   }
+
+  console.log('🔗 Building OAuth URL:', {
+    service,
+    domain: process.env.NEXT_PUBLIC_AUTH0_DOMAIN,
+    clientId: CLIENT_IDS[service],
+    redirectUri, // ✅ Log เพื่อ debug
+  });
 
   return `https://${process.env.NEXT_PUBLIC_AUTH0_DOMAIN}/authorize?${params.toString()}`;
 };
@@ -209,7 +224,6 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
         credentials.forEach((cred: any) => {
           const normalizedProvider = cred.provider.toLowerCase().replace('google-oauth2', 'google');
           
-          // Map all non-connected states to 'disconnected' (including errors)
           if (cred.injectedToN8n && !cred.injectionError) {
             statusMap[normalizedProvider] = 'connected';
           } else {
@@ -217,7 +231,6 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
           }
         });
         
-        // Set disconnected for services without credentials
         services.forEach(({ service }) => {
           if (!statusMap[service]) {
             statusMap[service] = 'disconnected';
@@ -252,13 +265,11 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
     }
   }, [userId]);
 
-  // Initial fetch on mount
   useEffect(() => {
     fetchStats();
     fetchConnectionStatus();
   }, [fetchStats, fetchConnectionStatus]);
 
-  // Polling every 60 seconds
   useEffect(() => {
     const interval = setInterval(() => {
       fetchStats();
@@ -268,7 +279,6 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
     return () => clearInterval(interval);
   }, [fetchStats, fetchConnectionStatus]);
 
-  // Refresh when tab becomes visible
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
@@ -282,7 +292,6 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [fetchStats, fetchConnectionStatus]);
 
-  // Handle OAuth callback
   useEffect(() => {
     const connected = searchParams.get("connected");
     const status = searchParams.get("status");
@@ -291,13 +300,11 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
     if (connected && status === "success") {
       showToast(`✅ Successfully connected ${connected}!`);
       clearUrlParams(["connected", "status", "timestamp"]);
-      // Immediate refresh after successful connection
       fetchStats();
       fetchConnectionStatus();
     } else if (error) {
       showToast(`❌ Connection failed: ${decodeURIComponent(error)}`);
       clearUrlParams(["error", "timestamp"]);
-      // Immediate refresh after failed connection
       fetchConnectionStatus();
     }
   }, [searchParams?.toString(), fetchStats, fetchConnectionStatus]);
@@ -311,6 +318,14 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
       showToast("🔒 Upgrade required to connect this provider.");
       return;
     }
+    
+    // ✅ เพิ่ม validation
+    if (!CLIENT_IDS[service]) {
+      showToast(`❌ Client ID not configured for ${service}`);
+      console.error(`Missing CLIENT_ID for ${service}`);
+      return;
+    }
+    
     try {
       setLoadingConnect(service);
       const state = createOAuthState(userId, service);
@@ -323,7 +338,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
         authUrl,
         domain: process.env.NEXT_PUBLIC_AUTH0_DOMAIN,
         clientId: CLIENT_IDS[service],
-        callbackUrl: process.env.NEXT_PUBLIC_AUTH0_CALLBACK_URL || process.env.NEXT_PUBLIC_APP_URL + '/api/oauth-callback'
+        callbackUrl: process.env.NEXT_PUBLIC_AUTH0_CALLBACK_URL
       });
       
       window.location.href = authUrl;
@@ -354,7 +369,6 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
             onMouseEnter={() => setHovering(true)}
             onMouseLeave={() => setHovering(false)}
           >
-            {/* Card 1: Active Connections + Current Plan */}
             <div className="relative p-6 rounded-2xl transition-all">
               <div className="flex items-center justify-center mb-4">
                 <h3 className="text-slate-800 dark:text-slate-200 text-lg font-semibold">
@@ -378,11 +392,16 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
                   <div className="mt-1 text-4xl font-semibold text-slate-900 dark:text-white">
                     {currentTier}
                   </div>
+                  <Link 
+                    href="/memories"
+                    className="mt-4 inline-block text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 transition-colors"
+                  >
+                    Memory matrix
+                  </Link>
                 </div>
               </div>
             </div>
 
-            {/* Card 2: Available Integrations */}
             <div className="p-6 rounded-2xl bg-white/30 dark:bg-white/10 border border-white/30 dark:border-white/10 shadow-[0_8px_32px_rgba(2,6,23,0.08)] transition-all hover:bg-white/40 dark:hover:bg-white/8">
               <h3 className="text-slate-800 dark:text-slate-200 text-lg font-bold mb-6">Available Integrations</h3>
 
@@ -427,7 +446,6 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
               </div>
             </div>
 
-            {/* Card 3: Upgrade to Unlock */}
             {lockedServices.length > 0 && (
               <div className="p-6 rounded-2xl bg-white/30 dark:bg-white/10 border border-white/30 dark:border-white/10 shadow-[0_8px_32px_rgba(2,6,23,0.08)] hover:bg-white/40 dark:hover:bg-white/8 transition-all">
                 <div className="flex items-center justify-between mb-6">
@@ -466,7 +484,6 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
             )}
           </div>
 
-          {/* Toast Notification */}
           {toast && (
             <div
               aria-live="polite"
@@ -485,7 +502,6 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
                   </div>
                 </div>
 
-                {/* Progress Bar */}
                 <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-slate-200/30 dark:bg-slate-700/30">
                   <div
                     className="h-full bg-gradient-to-r from-green-400 to-green-600"

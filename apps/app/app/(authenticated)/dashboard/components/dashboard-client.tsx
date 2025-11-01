@@ -11,11 +11,11 @@ import Link from 'next/link';
 
 // ===== CONSTANTS & CONFIGURATION =====
 const CLIENT_IDS = {
-  google: process.env.NEXT_PUBLIC_AUTH0_GOOGLE_CLIENT_ID ?? "",
-  spotify: process.env.NEXT_PUBLIC_AUTH0_SPOTIFY_CLIENT_ID ?? "",
-  discord: process.env.NEXT_PUBLIC_AUTH0_DISCORD_CLIENT_ID ?? "",
-  github: process.env.NEXT_PUBLIC_AUTH0_GITHUB_CLIENT_ID ?? "",
-  linkedin: process.env.NEXT_PUBLIC_AUTH0_LINKEDIN_CLIENT_ID ?? "",
+  google: process.env.NEXT_PUBLIC_AUTH0_CONNECT_CLIENT_ID ?? "",
+  spotify: process.env.NEXT_PUBLIC_AUTH0_CONNECT_CLIENT_ID ?? "",
+  discord: process.env.NEXT_PUBLIC_AUTH0_CONNECT_CLIENT_ID ?? "",
+  github: process.env.NEXT_PUBLIC_AUTH0_CONNECT_CLIENT_ID ?? "",
+  linkedin: process.env.NEXT_PUBLIC_AUTH0_CONNECT_CLIENT_ID ?? "",
 };
 
 const BASE_SCOPES = {

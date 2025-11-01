@@ -1,29 +1,41 @@
-// app/api/oauth-callback/route.ts - COMPLETE FIXED VERSION
+// app/api/oauth-callback/route.ts - FIXED VERSION
 import { NextRequest, NextResponse } from 'next/server';
 import { database as db } from '@repo/database';
 
 const CONFIG = {
   AUTH0_DOMAIN: process.env.NEXT_PUBLIC_AUTH0_DOMAIN!,
   APP_URL: process.env.NEXT_PUBLIC_APP_URL!,
+  CALLBACK_URL: process.env.NEXT_PUBLIC_AUTH0_CALLBACK_URL || `${process.env.NEXT_PUBLIC_APP_URL}/api/oauth-callback`,
 };
 
 export async function GET(request: NextRequest) {
+  const startTime = Date.now();
+  
   try {
     console.log('🚀 OAuth callback started');
+    console.log('📍 Callback URL:', CONFIG.CALLBACK_URL);
     
     const { searchParams } = new URL(request.url);
     const code = searchParams.get('code');
     const state = searchParams.get('state');
     const error = searchParams.get('error');
+    const error_description = searchParams.get('error_description');
+
+    console.log('📦 Received parameters:', {
+      hasCode: !!code,
+      hasState: !!state,
+      error: error || 'none',
+      error_description: error_description || 'none',
+    });
 
     // ===== HANDLE ERRORS =====
     if (error) {
-      console.error('❌ OAuth error:', error);
+      console.error('❌ OAuth error:', error, error_description);
       return redirectWithError(`oauth_error: ${error}`);
     }
 
     if (!code || !state) {
-      console.error('❌ Missing parameters');
+      console.error('❌ Missing parameters:', { code: !!code, state: !!state });
       return redirectWithError('missing_parameters');
     }
 
@@ -31,7 +43,11 @@ export async function GET(request: NextRequest) {
     let stateData: { user_id: string; service: string; timestamp: number };
     try {
       stateData = JSON.parse(atob(state));
-      console.log('✅ State decoded:', { service: stateData.service, userId: stateData.user_id });
+      console.log('✅ State decoded:', { 
+        service: stateData.service, 
+        userId: stateData.user_id.substring(0, 8) + '...',
+        age: Math.floor((Date.now() - stateData.timestamp) / 1000) + 's'
+      });
       
       // Check expiration (15 minutes)
       if (Date.now() - stateData.timestamp > 15 * 60 * 1000) {
@@ -139,7 +155,7 @@ export async function GET(request: NextRequest) {
         clientSecret,
         tokenSource: hasIdpTokens ? 'identity_provider' : 'auth0',
         updatedAt: new Date(),
-        injectionError: null, // Clear previous errors
+        injectionError: null,
       },
     });
 
@@ -176,11 +192,8 @@ export async function GET(request: NextRequest) {
       try {
         const n8nEmail = user.n8nUserEmail || user.email;
         const n8nPassword = `7On${user.n8nEncryptionKey}`;
-
-        // Remove trailing slash from URL
         const n8nUrl = user.n8nUrl.replace(/\/$/, '');
 
-        // Login to N8N
         console.log('🔐 Logging into N8N...');
         const cookies = await loginToN8N(n8nUrl, n8nEmail, n8nPassword);
         
@@ -190,7 +203,6 @@ export async function GET(request: NextRequest) {
 
         console.log('✅ N8N login successful');
 
-        // Prepare token data for N8N
         const n8nTokenData = {
           access_token: finalAccessToken!,
           refresh_token: finalRefreshToken,
@@ -198,7 +210,6 @@ export async function GET(request: NextRequest) {
           client_secret: clientSecret,
         };
 
-        // Create credentials based on provider
         let credentialResults;
         
         if (stateData.service === 'google') {
@@ -218,12 +229,10 @@ export async function GET(request: NextRequest) {
           );
         }
 
-        // Extract successful credential IDs
         const successfulIds = credentialResults.results
           .filter((r: any) => r.success)
           .map((r: any) => r.id);
 
-        // Update database with injection results
         await db.socialCredential.update({
           where: { id: savedCredential.id },
           data: {
@@ -256,14 +265,15 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // ===== SUCCESS REDIRECT =====
-    console.log('✅ OAuth flow completed successfully');
+    const elapsed = Date.now() - startTime;
+    console.log(`✅ OAuth flow completed successfully in ${elapsed}ms`);
     
     return NextResponse.redirect(
       `${CONFIG.APP_URL}/dashboard?connected=${stateData.service}&status=success&timestamp=${Date.now()}`
     );
   } catch (err) {
-    console.error('💥 OAuth callback error:', err);
+    const elapsed = Date.now() - startTime;
+    console.error(`💥 OAuth callback error after ${elapsed}ms:`, err);
     const errorMessage = err instanceof Error ? err.message : 'unknown_error';
     return redirectWithError(errorMessage);
   }
@@ -271,9 +281,6 @@ export async function GET(request: NextRequest) {
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * Exchange authorization code with Auth0 for tokens
- */
 async function exchangeCodeForAuth0Tokens(
   code: string,
   service: string
@@ -285,7 +292,11 @@ async function exchangeCodeForAuth0Tokens(
     throw new Error(`Missing Auth0 credentials for ${service}`);
   }
 
-  console.log('Exchanging code with Auth0...');
+  console.log('Exchanging code with Auth0...', {
+    service,
+    clientId: clientId.substring(0, 10) + '...',
+    redirectUri: CONFIG.CALLBACK_URL,
+  });
   
   const response = await fetch(`https://${CONFIG.AUTH0_DOMAIN}/oauth/token`, {
     method: 'POST',
@@ -295,22 +306,19 @@ async function exchangeCodeForAuth0Tokens(
       client_id: clientId,
       client_secret: clientSecret,
       code,
-      redirect_uri: `${CONFIG.APP_URL}/api/oauth-callback`,
+      redirect_uri: CONFIG.CALLBACK_URL, // ✅ ใช้ค่าเดียวกับที่ส่งไปตอน authorize
     }),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
     console.error('Token exchange failed:', response.status, errorText);
-    throw new Error(`Token exchange failed: ${response.status}`);
+    throw new Error(`Token exchange failed: ${response.status} - ${errorText}`);
   }
 
   return await response.json();
 }
 
-/**
- * Get IDP tokens from Auth0 Management API
- */
 async function getIdentityProviderTokens(
   idToken: string,
   service: string
@@ -320,17 +328,14 @@ async function getIdentityProviderTokens(
   provider_user_id: string | null;
 }> {
   try {
-    // Decode ID token to get Auth0 user ID
     const tokenParts = idToken.split('.');
     const payload = JSON.parse(atob(tokenParts[1]));
     const auth0UserId = payload.sub;
 
     console.log('Getting IDP tokens for Auth0 user:', auth0UserId);
 
-    // Get Management API token
     const mgmtToken = await getAuth0ManagementToken();
 
-    // Map service name to Auth0 connection name
     const providerMap: Record<string, string> = {
       google: 'google-oauth2',
       spotify: 'spotify',
@@ -341,7 +346,6 @@ async function getIdentityProviderTokens(
 
     const auth0Provider = providerMap[service] || service;
 
-    // Fetch user profile with identities
     const response = await fetch(
       `https://${CONFIG.AUTH0_DOMAIN}/api/v2/users/${encodeURIComponent(auth0UserId)}?fields=identities`,
       {
@@ -382,9 +386,6 @@ async function getIdentityProviderTokens(
   }
 }
 
-/**
- * Get Auth0 Management API token
- */
 async function getAuth0ManagementToken(): Promise<string> {
   const m2mClientId = process.env.AUTH0_M2M_CLIENT_ID;
   const m2mClientSecret = process.env.AUTH0_M2M_CLIENT_SECRET;
@@ -417,9 +418,6 @@ async function getAuth0ManagementToken(): Promise<string> {
   return data.access_token;
 }
 
-/**
- * Login to N8N and get session cookies
- */
 async function loginToN8N(
   n8nUrl: string,
   email: string,
@@ -451,9 +449,6 @@ async function loginToN8N(
   return cookies;
 }
 
-/**
- * Create Google credentials in N8N
- */
 async function createGoogleCredentials(
   n8nUrl: string,
   cookies: string,
@@ -551,9 +546,6 @@ async function createGoogleCredentials(
   };
 }
 
-/**
- * Create generic OAuth2 credential in N8N
- */
 async function createGenericOAuth2Credential(
   n8nUrl: string,
   cookies: string,
@@ -613,37 +605,15 @@ async function createGenericOAuth2Credential(
 
 // ===== CREDENTIAL GETTERS =====
 
-/**
- * Get Auth0 App Client ID (for token exchange with Auth0)
- */
+// ✅ แก้ไข: ใช้ AUTH0_CONNECT สำหรับทุก service
 function getAuth0ClientId(service: string): string {
-  const map: Record<string, string> = {
-    google: process.env.NEXT_PUBLIC_AUTH0_GOOGLE_CLIENT_ID!,
-    spotify: process.env.NEXT_PUBLIC_AUTH0_SPOTIFY_CLIENT_ID!,
-    discord: process.env.NEXT_PUBLIC_AUTH0_DISCORD_CLIENT_ID!,
-    github: process.env.NEXT_PUBLIC_AUTH0_GITHUB_CLIENT_ID!,
-    linkedin: process.env.NEXT_PUBLIC_AUTH0_LINKEDIN_CLIENT_ID!,
-  };
-  return map[service];
+  return process.env.NEXT_PUBLIC_AUTH0_CONNECT_CLIENT_ID!;
 }
 
-/**
- * Get Auth0 App Client Secret (for token exchange with Auth0)
- */
 function getAuth0ClientSecret(service: string): string {
-  const map: Record<string, string> = {
-    google: process.env.AUTH0_GOOGLE_CLIENT_SECRET!,
-    spotify: process.env.AUTH0_SPOTIFY_CLIENT_SECRET!,
-    discord: process.env.AUTH0_DISCORD_CLIENT_SECRET!,
-    github: process.env.AUTH0_GITHUB_CLIENT_SECRET!,
-    linkedin: process.env.AUTH0_LINKEDIN_CLIENT_SECRET!,
-  };
-  return map[service];
+  return process.env.AUTH0_CONNECT_CLIENT_SECRET!;
 }
 
-/**
- * Get Provider Client ID (for N8N credentials)
- */
 function getProviderClientId(service: string): string {
   const map: Record<string, string> = {
     google: process.env.GOOGLE_OAUTH_CLIENT_ID!,
@@ -655,9 +625,6 @@ function getProviderClientId(service: string): string {
   return map[service];
 }
 
-/**
- * Get Provider Client Secret (for N8N credentials)
- */
 function getProviderClientSecret(service: string): string {
   const map: Record<string, string> = {
     google: process.env.GOOGLE_OAUTH_CLIENT_SECRET!,
@@ -669,9 +636,6 @@ function getProviderClientSecret(service: string): string {
   return map[service];
 }
 
-/**
- * Redirect with error
- */
 function redirectWithError(errorMessage: string) {
   console.error('Redirecting with error:', errorMessage);
   return NextResponse.redirect(
