@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@repo/design-system/components/ui/button";
-import { Github, Linkedin, Sparkles, Loader2, Check } from "lucide-react";
+import { Github, Linkedin, Sparkles, Loader2, Check, Database } from "lucide-react";
 import { useSubscription } from "@repo/auth/hooks/use-subscription";
 import type { SubscriptionTier } from "@repo/auth/client";
 import { GL } from "@/components/gl";
@@ -38,7 +38,6 @@ const LinkedInIcon = () => (
 );
 
 /* ------------------------------- Constants -------------------------------- */
-// ✅ แก้ไข: ใช้ AUTH0_CONNECT_CLIENT_ID เดียวสำหรับทุก provider
 const AUTH0_CONNECT_CLIENT_ID = process.env.NEXT_PUBLIC_AUTH0_CONNECT_CLIENT_ID ?? "";
 
 const CLIENT_IDS = {
@@ -50,10 +49,8 @@ const CLIENT_IDS = {
 };
 
 const BASE_SCOPES: Record<string, string> = {
-  google:
-    "openid profile email offline_access https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/spreadsheets",
-  spotify:
-    "openid user-read-email user-read-private user-read-playback-state user-library-read offline_access",
+  google: "openid profile email offline_access https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/spreadsheets",
+  spotify: "openid user-read-email user-read-private user-read-playback-state user-library-read offline_access",
   discord: "openid identify email guilds offline_access",
   github: "openid user:email repo read:user offline_access",
   linkedin: "openid r_liteprofile r_emailaddress w_member_social offline_access",
@@ -70,28 +67,19 @@ const POLLING_INTERVAL = 60000;
 /* ------------------------------- Utilities -------------------------------- */
 const createOAuthState = (userId: string, service: string): string => {
   try {
-    return btoa(
-      JSON.stringify({
-        user_id: userId,
-        service,
-        timestamp: Date.now(),
-      })
-    );
+    return btoa(JSON.stringify({ user_id: userId, service, timestamp: Date.now() }));
   } catch {
     return `${userId}:${service}:${Date.now()}`;
   }
 };
 
-// ✅ แก้ไข: ใช้ redirect_uri ที่ถูกต้อง
 const buildAuthorizationUrl = (service: keyof typeof CLIENT_IDS, state: string): string => {
-  // ✅ ใช้ NEXT_PUBLIC_AUTH0_CALLBACK_URL ที่ตั้งค่าไว้
-  const redirectUri = process.env.NEXT_PUBLIC_AUTH0_CALLBACK_URL || 
-                      `${process.env.NEXT_PUBLIC_APP_URL}/api/oauth-callback`;
+  const redirectUri = process.env.NEXT_PUBLIC_AUTH0_CALLBACK_URL || `${process.env.NEXT_PUBLIC_APP_URL}/api/oauth-callback`;
   
   const params = new URLSearchParams({
     response_type: "code",
     client_id: CLIENT_IDS[service]!,
-    redirect_uri: redirectUri, // ✅ แก้ไขตรงนี้
+    redirect_uri: redirectUri,
     scope: BASE_SCOPES[service] || "",
     state,
     audience: `https://${process.env.NEXT_PUBLIC_AUTH0_DOMAIN}/api/v2/`,
@@ -106,13 +94,6 @@ const buildAuthorizationUrl = (service: keyof typeof CLIENT_IDS, state: string):
   if (service === "spotify") {
     params.append("show_dialog", "true");
   }
-
-  console.log('🔗 Building OAuth URL:', {
-    service,
-    domain: process.env.NEXT_PUBLIC_AUTH0_DOMAIN,
-    clientId: CLIENT_IDS[service],
-    redirectUri, // ✅ Log เพื่อ debug
-  });
 
   return `https://${process.env.NEXT_PUBLIC_AUTH0_DOMAIN}/authorize?${params.toString()}`;
 };
@@ -148,22 +129,20 @@ interface ConnectionStatus {
   [key: string]: ConnectionState;
 }
 
+interface MemoriesStatus {
+  isInitialized: boolean;
+  hasCredential: boolean;
+  projectReady: boolean;
+}
+
 /* ----------------------- Connection Status Indicator ---------------------- */
 const ConnectionStatusIndicator = ({ status }: { status: ConnectionState }) => {
   const isConnected = status === 'connected';
   
   return (
     <div className="flex items-center justify-center">
-      <div 
-        className={`relative w-2.5 h-2.5 rounded-full opacity-70 ${
-          isConnected 
-            ? 'bg-[#10b981] shadow-[0_0_8px_rgba(16,185,129,0.5)]' 
-            : 'bg-[#f97316] shadow-[0_0_8px_rgba(249,115,22,0.5)]'
-        }`}
-      >
-        {isConnected && (
-          <div className="absolute inset-0 rounded-full bg-[#10b981] animate-ping opacity-75" />
-        )}
+      <div className={`relative w-2.5 h-2.5 rounded-full opacity-70 ${isConnected ? 'bg-[#10b981] shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-[#f97316] shadow-[0_0_8px_rgba(249,115,22,0.5)]'}`}>
+        {isConnected && <div className="absolute inset-0 rounded-full bg-[#10b981] animate-ping opacity-75" />}
       </div>
     </div>
   );
@@ -182,6 +161,12 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
   const [loadingConnect, setLoadingConnect] = useState<string | null>(null);
   const [hovering, setHovering] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({});
+  const [memoriesStatus, setMemoriesStatus] = useState<MemoriesStatus>({
+    isInitialized: false,
+    hasCredential: false,
+    projectReady: false,
+  });
+  const [setupLoading, setSetupLoading] = useState(false);
 
   const services = [
     { service: "google" as const, label: "Google", icon: <GoogleIcon /> },
@@ -210,36 +195,24 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
   }, [toast]);
 
   const fetchConnectionStatus = useCallback(async () => {
-    if (!userId) {
-      console.warn('No userId provided, skipping connection status fetch');
-      return;
-    }
-    
+    if (!userId) return;
     try {
       const response = await fetch(`/api/user/social-credentials?userId=${userId}`);
       if (response.ok) {
         const credentials = await response.json();
         const statusMap: ConnectionStatus = {};
-        
         credentials.forEach((cred: any) => {
           const normalizedProvider = cred.provider.toLowerCase().replace('google-oauth2', 'google');
-          
           if (cred.injectedToN8n && !cred.injectionError) {
             statusMap[normalizedProvider] = 'connected';
           } else {
             statusMap[normalizedProvider] = 'disconnected';
           }
         });
-        
         services.forEach(({ service }) => {
-          if (!statusMap[service]) {
-            statusMap[service] = 'disconnected';
-          }
+          if (!statusMap[service]) statusMap[service] = 'disconnected';
         });
-        
         setConnectionStatus(statusMap);
-      } else {
-        console.error('Failed to fetch connection status:', response.status);
       }
     } catch (e) {
       console.error("Error fetching connection status:", e);
@@ -247,18 +220,19 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
   }, [userId, services]);
 
   const fetchStats = useCallback(async () => {
-    if (!userId) {
-      console.warn('No userId provided, skipping stats fetch');
-      return;
-    }
-    
+    if (!userId) return;
     try {
       const response = await fetch(`/api/user/n8n-status?userId=${userId}`);
       if (response.ok) {
         const data = await response.json();
         setStats({ activeConnections: data.injected_providers_count || 0 });
-      } else {
-        console.error('Failed to fetch n8n status:', response.status, await response.text());
+        
+        // Update memories status
+        setMemoriesStatus({
+          isInitialized: data.postgres_schema_initialized || false,
+          hasCredential: !!data.n8n_postgres_credential_id,
+          projectReady: data.northflank_project_status === 'ready',
+        });
       }
     } catch (e) {
       console.error("Error fetching stats:", e);
@@ -275,19 +249,16 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
       fetchStats();
       fetchConnectionStatus();
     }, POLLING_INTERVAL);
-    
     return () => clearInterval(interval);
   }, [fetchStats, fetchConnectionStatus]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        console.log('Tab visible - refreshing connection status');
         fetchStats();
         fetchConnectionStatus();
       }
     };
-
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [fetchStats, fetchConnectionStatus]);
@@ -318,29 +289,14 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
       showToast("🔒 Upgrade required to connect this provider.");
       return;
     }
-    
-    // ✅ เพิ่ม validation
     if (!CLIENT_IDS[service]) {
       showToast(`❌ Client ID not configured for ${service}`);
-      console.error(`Missing CLIENT_ID for ${service}`);
       return;
     }
-    
     try {
       setLoadingConnect(service);
       const state = createOAuthState(userId, service);
       const authUrl = buildAuthorizationUrl(service, state);
-      
-      console.log('🔗 OAuth Flow Started:', {
-        service,
-        userId,
-        state,
-        authUrl,
-        domain: process.env.NEXT_PUBLIC_AUTH0_DOMAIN,
-        clientId: CLIENT_IDS[service],
-        callbackUrl: process.env.NEXT_PUBLIC_AUTH0_CALLBACK_URL
-      });
-      
       window.location.href = authUrl;
     } catch (err) {
       console.error('❌ OAuth Connection Error:', err);
@@ -349,6 +305,37 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
     }
   };
 
+  // 🆕 Handle memory setup
+  const handleMemorySetup = async () => {
+    if (!userId) return;
+    
+    setSetupLoading(true);
+    try {
+      const response = await fetch('/api/memories/setup', {
+        method: 'POST',
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        showToast('✅ Database setup completed!');
+        // Refresh status
+        await fetchStats();
+      } else {
+        showToast(`❌ Setup failed: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('Setup error:', error);
+      showToast('❌ Setup failed. Please try again.');
+    } finally {
+      setSetupLoading(false);
+    }
+  };
+
+  // Determine memory button state
+  const memoryButtonReady = memoriesStatus.isInitialized && memoriesStatus.hasCredential;
+  const memoryButtonDisabled = !memoriesStatus.projectReady || setupLoading;
+
   return (
     <>
       <GL hovering={hovering} />
@@ -356,52 +343,67 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
       <div className="relative w-full min-h-screen p-6 transition-colors duration-500">
         <div className="max-w-7xl mx-auto relative z-10">
           <div className="mb-6 flex items-center justify-center">
-            <img 
-              src="/main-icon.svg"
-              alt="Logo" 
-              className="h-12 w-12 object-contain"
-            />
+            <img src="/main-icon.svg" alt="Logo" className="h-12 w-12 object-contain" />
           </div>
           <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-[#FF6B5B]/40 to-transparent mt-4 mb-4 rounded-full" />
 
-          <div 
-            className="grid grid-cols-1 lg:grid-cols-3 gap-6"
-            onMouseEnter={() => setHovering(true)}
-            onMouseLeave={() => setHovering(false)}
-          >
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" onMouseEnter={() => setHovering(true)} onMouseLeave={() => setHovering(false)}>
+            {/* Card 1: Active Connections + Current Plan + Memory Button */}
             <div className="relative p-6 rounded-2xl transition-all">
               <div className="flex items-center justify-center mb-4">
-                <h3 className="text-slate-800 dark:text-slate-200 text-lg font-semibold">
-                  Active Connections
-                </h3>
+                <h3 className="text-slate-800 dark:text-slate-200 text-lg font-semibold">Active Connections</h3>
               </div>
 
               <div className="mb-6 text-center">
-                <div className="mt-1 text-4xl text-slate-900 dark:text-white">
-                  {stats.activeConnections}
-                </div>
+                <div className="mt-1 text-4xl text-slate-900 dark:text-white">{stats.activeConnections}</div>
               </div>
 
               <div className="w-full h-px bg-slate-200/40 dark:bg-slate-700/40 my-4" />
 
               <div className="flex flex-col items-center justify-center text-center">
                 <div>
-                  <h4 className="text-slate-700 dark:text-slate-200 text-lg font-semibold">
-                    Current Plan
-                  </h4>
-                  <div className="mt-1 text-4xl font-semibold text-slate-900 dark:text-white">
-                    {currentTier}
-                  </div>
-                  <Link 
-                    href="/memories"
-                    className="mt-4 inline-block text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 transition-colors"
-                  >
-                    Memory matrix
-                  </Link>
+                  <h4 className="text-slate-700 dark:text-slate-200 text-lg font-semibold">Current Plan</h4>
+                  <div className="mt-1 text-4xl font-semibold text-slate-900 dark:text-white">{currentTier}</div>
                 </div>
+              </div>
+
+              {/* 🆕 Memory Button */}
+              <div className="mt-6">
+                {memoryButtonReady ? (
+                  <Link href="/dashboard/memories" className="block">
+                    <button className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl transition transform hover:scale-[1.02] hover:shadow-lg border border-slate-200/40 dark:border-slate-700/30 bg-gradient-to-r from-purple-500 to-indigo-600 text-white">
+                      <Database className="h-5 w-5" />
+                      <span className="text-sm font-medium">Memory Matrix</span>
+                    </button>
+                  </Link>
+                ) : (
+                  <button
+                    onClick={handleMemorySetup}
+                    disabled={memoryButtonDisabled}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl transition transform hover:scale-[1.02] hover:shadow-lg border border-slate-200/40 dark:border-slate-700/30 bg-white/30 dark:bg-white/5 backdrop-blur-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {setupLoading ? (
+                      <>
+                        <Loader2 className="h-5 w-5 animate-spin text-slate-600 dark:text-slate-300" />
+                        <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Setting up...</span>
+                      </>
+                    ) : !memoriesStatus.projectReady ? (
+                      <>
+                        <Database className="h-5 w-5 text-slate-600 dark:text-slate-300" />
+                        <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Project initializing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Database className="h-5 w-5 text-slate-800 dark:text-slate-100" />
+                        <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Setup Database</span>
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
             </div>
 
+            {/* Card 2: Available Integrations */}
             <div className="p-6 rounded-2xl bg-white/30 dark:bg-white/10 border border-white/30 dark:border-white/10 shadow-[0_8px_32px_rgba(2,6,23,0.08)] transition-all hover:bg-white/40 dark:hover:bg-white/8">
               <h3 className="text-slate-800 dark:text-slate-200 text-lg font-bold mb-6">Available Integrations</h3>
 
@@ -425,20 +427,14 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
                       className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl transition transform hover:scale-[1.01] hover:shadow-lg border border-slate-200/40 dark:border-slate-700/30 bg-white/30 dark:bg-white/5 backdrop-blur-sm disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-white/30 dark:bg-white/5">
-                          {icon}
-                        </div>
+                        <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-white/30 dark:bg-white/5">{icon}</div>
                         <div className="text-sm font-medium text-slate-800 dark:text-slate-100">
                           {isConnected ? `${label} Connected` : `Connect ${label}`}
                         </div>
                       </div>
 
                       <div className="flex items-center gap-3">
-                        {loading ? (
-                          <Loader2 className="h-4 w-4 animate-spin text-slate-600 dark:text-slate-300" />
-                        ) : (
-                          <ConnectionStatusIndicator status={status} />
-                        )}
+                        {loading ? <Loader2 className="h-4 w-4 animate-spin text-slate-600 dark:text-slate-300" /> : <ConnectionStatusIndicator status={status} />}
                       </div>
                     </button>
                   );
@@ -446,6 +442,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
               </div>
             </div>
 
+            {/* Card 3: Upgrade to Unlock */}
             {lockedServices.length > 0 && (
               <div className="p-6 rounded-2xl bg-white/30 dark:bg-white/10 border border-white/30 dark:border-white/10 shadow-[0_8px_32px_rgba(2,6,23,0.08)] hover:bg-white/40 dark:hover:bg-white/8 transition-all">
                 <div className="flex items-center justify-between mb-6">
@@ -462,13 +459,8 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
 
                 <div className="space-y-3">
                   {lockedServices.map(({ service, label, icon }) => (
-                    <div
-                      key={service}
-                      className="flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-200 border border-slate-200/40 dark:border-slate-700/30 bg-white/20 dark:bg-white/3 cursor-not-allowed opacity-60"
-                    >
-                      <div className="flex h-8 w-8 items-center justify-center rounded-lg">
-                        {icon}
-                      </div>
+                    <div key={service} className="flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-200 border border-slate-200/40 dark:border-slate-700/30 bg-white/20 dark:bg-white/3 cursor-not-allowed opacity-60">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg">{icon}</div>
                       <span className="text-sm text-slate-600 dark:text-slate-300 flex-1">{label}</span>
                       <svg className="h-4 w-4 text-slate-400 dark:text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -484,6 +476,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
             )}
           </div>
 
+          {/* Toast Notification */}
           {toast && (
             <div
               aria-live="polite"
@@ -492,23 +485,14 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
             >
               <div className="relative overflow-hidden rounded-2xl bg-white/95 dark:bg-[#0b0d12]/90 backdrop-blur-xl border border-slate-200/40 dark:border-slate-700/40 px-5 py-3 shadow-2xl max-w-[90vw] sm:max-w-sm">
                 <div className="flex items-center gap-3">
-                  <div
-                    className={`w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center transition-transform ${toast.showIcon ? "scale-100" : "scale-75"}`}
-                  >
+                  <div className={`w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center transition-transform ${toast.showIcon ? "scale-100" : "scale-75"}`}>
                     <Check className="w-4 h-4 text-green-600 dark:text-green-300" />
                   </div>
-                  <div className="text-sm text-slate-900 dark:text-slate-100 font-medium break-words">
-                    {toast.message}
-                  </div>
+                  <div className="text-sm text-slate-900 dark:text-slate-100 font-medium break-words">{toast.message}</div>
                 </div>
 
                 <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-slate-200/30 dark:bg-slate-700/30">
-                  <div
-                    className="h-full bg-gradient-to-r from-green-400 to-green-600"
-                    style={{
-                      animation: toast.visible ? "progressBar 2.5s linear forwards" : "none",
-                    }}
-                  />
+                  <div className="h-full bg-gradient-to-r from-green-400 to-green-600" style={{ animation: toast.visible ? "progressBar 2.5s linear forwards" : "none" }} />
                 </div>
               </div>
             </div>
@@ -518,12 +502,8 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
 
       <style jsx global>{`
         @keyframes progressBar {
-          from {
-            width: 0%;
-          }
-          to {
-            width: 100%;
-          }
+          from { width: 0%; }
+          to { width: 100%; }
         }
       `}</style>
     </>
