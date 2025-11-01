@@ -224,18 +224,17 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * 🔧 แก้ไข: Helper function สำหรับ Get Postgres connection
- * ใช้ External Networks API เพื่อดึง connection details
+ * 🔧 แก้ไข: ใช้ Secret Groups API เพื่อดึง DATABASE_URL
  */
 async function getPostgresConnection(projectId: string) {
   try {
-    console.log('📝 Getting Postgres addon for project:', projectId);
+    console.log('📝 Getting Postgres connection from secret groups...');
     
     // ========================================
-    // STEP 1: List all addons
+    // STEP 1: List Secret Groups
     // ========================================
-    const addonsResponse = await fetch(
-      `https://api.northflank.com/v1/projects/${projectId}/addons`,
+    const secretGroupsResponse = await fetch(
+      `https://api.northflank.com/v1/projects/${projectId}/secret-groups`,
       {
         headers: {
           Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
@@ -244,61 +243,50 @@ async function getPostgresConnection(projectId: string) {
       }
     );
     
-    if (!addonsResponse.ok) {
-      const errorText = await addonsResponse.text();
-      console.error('❌ Failed to list addons:', addonsResponse.status, errorText);
+    if (!secretGroupsResponse.ok) {
+      const errorText = await secretGroupsResponse.text();
+      console.error('❌ Failed to list secret groups:', secretGroupsResponse.status, errorText);
       return null;
     }
     
-    const addonsData = await addonsResponse.json();
+    const secretGroupsData = await secretGroupsResponse.json();
+    console.log('📦 Found', secretGroupsData.data?.secretGroups?.length || 0, 'secret groups');
     
-    // Validate and extract array
-    let addonsList = addonsData.data;
+    // ========================================
+    // STEP 2: Find database secret group
+    // ========================================
+    let databaseSecretGroup = null;
     
-    if (!Array.isArray(addonsList)) {
-      if (addonsList?.addons && Array.isArray(addonsList.addons)) {
-        addonsList = addonsList.addons;
-      } else if (addonsList?.items && Array.isArray(addonsList.items)) {
-        addonsList = addonsList.items;
-      } else {
-        console.error('❌ Cannot find addons array in response');
-        return null;
+    const secretGroups = secretGroupsData.data?.secretGroups || [];
+    
+    // ลองหา secret group ที่มีชื่อเกี่ยวกับ database
+    for (const group of secretGroups) {
+      const groupName = (group.name || '').toLowerCase();
+      if (groupName.includes('database') || groupName.includes('postgres') || groupName.includes('db')) {
+        databaseSecretGroup = group;
+        console.log('✅ Found database secret group:', group.name);
+        break;
       }
     }
     
-    console.log('✅ Found', addonsList.length, 'addons');
+    // ถ้าไม่เจอ ลองใช้ตัวแรก
+    if (!databaseSecretGroup && secretGroups.length > 0) {
+      databaseSecretGroup = secretGroups[0];
+      console.log('⚠️ Using first secret group:', databaseSecretGroup.name);
+    }
     
-    // ========================================
-    // STEP 2: Find Postgres addon
-    // ========================================
-    const postgresAddon = addonsList.find((addon: any) => {
-      const addonType = addon.spec?.type || addon.type;
-      return addonType === 'postgresql';
-    });
-    
-    if (!postgresAddon) {
-      console.error('❌ No Postgres addon found');
-      console.log('Available addons:', addonsList.map((a: any) => ({
-        id: a.id,
-        name: a.name,
-        type: a.spec?.type || a.type,
-      })));
+    if (!databaseSecretGroup) {
+      console.error('❌ No secret group found');
       return null;
     }
     
-    console.log('✅ Postgres addon found:', {
-      id: postgresAddon.id,
-      name: postgresAddon.name,
-    });
-    
     // ========================================
-    // STEP 3: Get connection via External Networks
-    // 🔧 FIX: ใช้ /external-networks endpoint แทน
+    // STEP 3: Get Secret Details
     // ========================================
-    console.log('📝 Getting connection via external networks...');
+    console.log('📝 Getting secrets from group:', databaseSecretGroup.id);
     
-    const networksResponse = await fetch(
-      `https://api.northflank.com/v1/projects/${projectId}/addons/${postgresAddon.id}/external-networks`,
+    const secretDetailsResponse = await fetch(
+      `https://api.northflank.com/v1/projects/${projectId}/secret-groups/${databaseSecretGroup.id}`,
       {
         headers: {
           Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
@@ -307,85 +295,104 @@ async function getPostgresConnection(projectId: string) {
       }
     );
     
-    if (!networksResponse.ok) {
-      const errorText = await networksResponse.text();
-      console.error('❌ Failed to get external networks:', networksResponse.status, errorText);
+    if (!secretDetailsResponse.ok) {
+      const errorText = await secretDetailsResponse.text();
+      console.error('❌ Failed to get secret details:', secretDetailsResponse.status, errorText);
       return null;
     }
     
-    const networksData = await networksResponse.json();
-    console.log('📦 Networks response:', JSON.stringify(networksData, null, 2).substring(0, 500));
+    const secretDetails = await secretDetailsResponse.json();
+    const secrets = secretDetails.data?.data || {};
     
-    // Extract connection details
-    let connection = null;
+    console.log('📦 Available secrets:', Object.keys(secrets));
     
-    // Try different paths
-    if (networksData.data?.connection) {
-      connection = networksData.data.connection;
-    } else if (networksData.connection) {
-      connection = networksData.connection;
-    } else if (networksData.data?.externalNetworks?.[0]) {
-      connection = networksData.data.externalNetworks[0];
-    } else if (Array.isArray(networksData.data) && networksData.data[0]) {
-      connection = networksData.data[0];
-    }
+    // ========================================
+    // STEP 4: Extract Connection Info
+    // ========================================
     
-    if (!connection) {
-      console.error('❌ No connection details found in networks response');
-      console.log('Available fields:', Object.keys(networksData));
-      if (networksData.data) {
-        console.log('Data fields:', Object.keys(networksData.data));
+    // ลองหา DATABASE_URL
+    let connectionString = secrets.DATABASE_URL || 
+                          secrets.POSTGRES_URL || 
+                          secrets.DB_URL ||
+                          secrets.CONNECTION_STRING;
+    
+    if (connectionString) {
+      console.log('✅ Found connection string in secrets');
+      
+      // Parse connection string
+      const parsed = parsePostgresUrl(connectionString);
+      
+      if (parsed) {
+        return {
+          connectionString,
+          config: parsed,
+        };
       }
-      return null;
     }
     
-    console.log('📦 Connection object:', JSON.stringify(connection, null, 2).substring(0, 500));
+    // ถ้าไม่มี connection string แบบเดียว ลองหาแยกเป็น fields
+    const host = secrets.DB_HOST || secrets.POSTGRES_HOST || secrets.HOST;
+    const port = secrets.DB_PORT || secrets.POSTGRES_PORT || secrets.PORT || '5432';
+    const database = secrets.DB_NAME || secrets.POSTGRES_DB || secrets.DATABASE || secrets.DB_DATABASE;
+    const user = secrets.DB_USER || secrets.POSTGRES_USER || secrets.USER || secrets.DB_USERNAME;
+    const password = secrets.DB_PASSWORD || secrets.POSTGRES_PASSWORD || secrets.PASSWORD;
     
-    // Extract connection details (various possible structures)
-    const host = connection.host || connection.hostname || connection.address;
-    const port = connection.port || 5432;
-    const database = connection.database || connection.databaseName || postgresAddon.name;
-    const user = connection.user || connection.username;
-    const password = connection.password;
-    
-    if (!host || !user || !password) {
-      console.error('❌ Missing essential connection fields');
-      console.log('Connection details:', { 
-        hasHost: !!host, 
-        hasUser: !!user, 
-        hasPassword: !!password,
-        hasDatabase: !!database,
-      });
-      return null;
+    if (host && user && password && database) {
+      console.log('✅ Found connection details in separate fields');
+      
+      connectionString = `postgresql://${user}:${password}@${host}:${port}/${database}?sslmode=require`;
+      
+      return {
+        connectionString,
+        config: {
+          host,
+          port: parseInt(String(port), 10),
+          database,
+          user,
+          password,
+        },
+      };
     }
     
-    const connectionString = connection.connectionString || 
-      `postgresql://${user}:${password}@${host}:${port}/${database}?sslmode=require`;
+    console.error('❌ No valid connection info found in secrets');
+    console.log('Available secret keys:', Object.keys(secrets));
     
-    console.log('✅ Connection details validated:', {
-      host,
-      port,
-      database,
-      user,
-      hasPassword: !!password,
-    });
-    
-    return {
-      connectionString,
-      config: {
-        host,
-        port: parseInt(String(port), 10),
-        database,
-        user,
-        password,
-      },
-    };
+    return null;
   } catch (error) {
     console.error('💥 Error getting Postgres connection:', error);
     if (error instanceof Error) {
       console.error('Error message:', error.message);
       console.error('Error stack:', error.stack);
     }
+    return null;
+  }
+}
+
+/**
+ * Helper: Parse Postgres URL
+ */
+function parsePostgresUrl(url: string) {
+  try {
+    // postgresql://user:password@host:port/database
+    const regex = /postgresql:\/\/([^:]+):([^@]+)@([^:]+):(\d+)\/([^?]+)/;
+    const match = url.match(regex);
+    
+    if (!match) {
+      console.warn('⚠️ Could not parse connection string');
+      return null;
+    }
+    
+    const [, user, password, host, port, database] = match;
+    
+    return {
+      host,
+      port: parseInt(port, 10),
+      database,
+      user,
+      password,
+    };
+  } catch (error) {
+    console.error('❌ Error parsing URL:', error);
     return null;
   }
 }
