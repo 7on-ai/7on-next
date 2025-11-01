@@ -225,6 +225,7 @@ export async function POST(request: NextRequest) {
 
 /**
  * 🔧 แก้ไข: Helper function สำหรับ Get Postgres connection
+ * ใช้ External Networks API เพื่อดึง connection details
  */
 async function getPostgresConnection(projectId: string) {
   try {
@@ -251,55 +252,33 @@ async function getPostgresConnection(projectId: string) {
     
     const addonsData = await addonsResponse.json();
     
-    // ========================================
-    // 🔧 FIX: Validate response structure
-    // ========================================
-    console.log('📦 Raw API response type:', typeof addonsData);
-    console.log('📦 Has data field:', 'data' in addonsData);
-    console.log('📦 Data type:', addonsData.data ? typeof addonsData.data : 'undefined');
+    // Validate and extract array
+    let addonsList = addonsData.data;
     
-    // ตรวจสอบว่า data field มีอยู่
-    if (!addonsData.data) {
-      console.error('❌ No data field in addons response');
-      console.log('Available fields:', Object.keys(addonsData));
-      return null;
-    }
-    
-    // ตรวจสอบว่า data เป็น array
-    if (!Array.isArray(addonsData.data)) {
-      console.error('❌ addons.data is not an array:', typeof addonsData.data);
-      console.log('Data content:', JSON.stringify(addonsData.data).substring(0, 200));
-      
-      // 🔧 FIX: ถ้าเป็น object ที่มี nested array
-      if (typeof addonsData.data === 'object' && addonsData.data.items && Array.isArray(addonsData.data.items)) {
-        console.log('⚠️ Found nested items array, using it instead');
-        addonsData.data = addonsData.data.items;
-      } else if (typeof addonsData.data === 'object' && addonsData.data.addons && Array.isArray(addonsData.data.addons)) {
-        console.log('⚠️ Found nested addons array, using it instead');
-        addonsData.data = addonsData.data.addons;
+    if (!Array.isArray(addonsList)) {
+      if (addonsList?.addons && Array.isArray(addonsList.addons)) {
+        addonsList = addonsList.addons;
+      } else if (addonsList?.items && Array.isArray(addonsList.items)) {
+        addonsList = addonsList.items;
       } else {
+        console.error('❌ Cannot find addons array in response');
         return null;
       }
     }
     
-    console.log('✅ Found', addonsData.data.length, 'addons');
+    console.log('✅ Found', addonsList.length, 'addons');
     
     // ========================================
     // STEP 2: Find Postgres addon
     // ========================================
-    const postgresAddon = addonsData.data.find((addon: any) => {
+    const postgresAddon = addonsList.find((addon: any) => {
       const addonType = addon.spec?.type || addon.type;
-      console.log('Checking addon:', {
-        id: addon.id,
-        name: addon.name,
-        type: addonType,
-      });
       return addonType === 'postgresql';
     });
     
     if (!postgresAddon) {
-      console.error('❌ No Postgres addon found in project');
-      console.log('Available addons:', addonsData.data.map((a: any) => ({
+      console.error('❌ No Postgres addon found');
+      console.log('Available addons:', addonsList.map((a: any) => ({
         id: a.id,
         name: a.name,
         type: a.spec?.type || a.type,
@@ -313,12 +292,13 @@ async function getPostgresConnection(projectId: string) {
     });
     
     // ========================================
-    // STEP 3: Get connection details
+    // STEP 3: Get connection via External Networks
+    // 🔧 FIX: ใช้ /external-networks endpoint แทน
     // ========================================
-    console.log('📝 Getting connection details for addon:', postgresAddon.id);
+    console.log('📝 Getting connection via external networks...');
     
-    const connectionResponse = await fetch(
-      `https://api.northflank.com/v1/projects/${projectId}/addons/${postgresAddon.id}`,
+    const networksResponse = await fetch(
+      `https://api.northflank.com/v1/projects/${projectId}/addons/${postgresAddon.id}/external-networks`,
       {
         headers: {
           Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
@@ -327,57 +307,77 @@ async function getPostgresConnection(projectId: string) {
       }
     );
     
-    if (!connectionResponse.ok) {
-      const errorText = await connectionResponse.text();
-      console.error('❌ Failed to get addon details:', connectionResponse.status, errorText);
+    if (!networksResponse.ok) {
+      const errorText = await networksResponse.text();
+      console.error('❌ Failed to get external networks:', networksResponse.status, errorText);
       return null;
     }
     
-    const details = await connectionResponse.json();
+    const networksData = await networksResponse.json();
+    console.log('📦 Networks response:', JSON.stringify(networksData, null, 2).substring(0, 500));
     
-    // ตรวจสอบ structure
-    const connection = details.data?.connection || details.connection;
+    // Extract connection details
+    let connection = null;
+    
+    // Try different paths
+    if (networksData.data?.connection) {
+      connection = networksData.data.connection;
+    } else if (networksData.connection) {
+      connection = networksData.connection;
+    } else if (networksData.data?.externalNetworks?.[0]) {
+      connection = networksData.data.externalNetworks[0];
+    } else if (Array.isArray(networksData.data) && networksData.data[0]) {
+      connection = networksData.data[0];
+    }
     
     if (!connection) {
-      console.error('❌ No connection object in addon details');
-      console.log('Available fields in details:', Object.keys(details));
-      if (details.data) {
-        console.log('Available fields in details.data:', Object.keys(details.data));
+      console.error('❌ No connection details found in networks response');
+      console.log('Available fields:', Object.keys(networksData));
+      if (networksData.data) {
+        console.log('Data fields:', Object.keys(networksData.data));
       }
       return null;
     }
     
-    // Validate required fields
-    const requiredFields = ['host', 'port', 'database', 'user', 'password'];
-    const missingFields = requiredFields.filter(field => !connection[field]);
+    console.log('📦 Connection object:', JSON.stringify(connection, null, 2).substring(0, 500));
     
-    if (missingFields.length > 0) {
-      console.error('❌ Missing connection fields:', missingFields);
-      console.log('Available connection fields:', Object.keys(connection));
+    // Extract connection details (various possible structures)
+    const host = connection.host || connection.hostname || connection.address;
+    const port = connection.port || 5432;
+    const database = connection.database || connection.databaseName || postgresAddon.name;
+    const user = connection.user || connection.username;
+    const password = connection.password;
+    
+    if (!host || !user || !password) {
+      console.error('❌ Missing essential connection fields');
+      console.log('Connection details:', { 
+        hasHost: !!host, 
+        hasUser: !!user, 
+        hasPassword: !!password,
+        hasDatabase: !!database,
+      });
       return null;
     }
     
-    // ตรวจสอบ connection string
     const connectionString = connection.connectionString || 
-      `postgresql://${connection.user}:${connection.password}@${connection.host}:${connection.port}/${connection.database}`;
+      `postgresql://${user}:${password}@${host}:${port}/${database}?sslmode=require`;
     
     console.log('✅ Connection details validated:', {
-      host: connection.host,
-      port: connection.port,
-      database: connection.database,
-      user: connection.user,
-      hasPassword: !!connection.password,
-      hasConnectionString: !!connectionString,
+      host,
+      port,
+      database,
+      user,
+      hasPassword: !!password,
     });
     
     return {
       connectionString,
       config: {
-        host: connection.host,
-        port: parseInt(connection.port || '5432', 10),
-        database: connection.database,
-        user: connection.user,
-        password: connection.password,
+        host,
+        port: parseInt(String(port), 10),
+        database,
+        user,
+        password,
       },
     };
   } catch (error) {
