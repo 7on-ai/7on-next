@@ -326,8 +326,9 @@ async function getPostgresConnection(projectId: string) {
     const credentials = await credentialsResponse.json();
     const secrets = credentials.data?.secrets;
     const data = credentials.data?.data;
+    const envs = credentials.data?.envs;
     
-    if (!secrets && !data) {
+    if (!secrets && !data && !envs) {
       console.error('❌ No credentials found in response');
       console.log('Credentials response:', JSON.stringify(credentials, null, 2));
       return null;
@@ -336,48 +337,28 @@ async function getPostgresConnection(projectId: string) {
     console.log('✅ Credentials retrieved');
     console.log('Available secrets:', Object.keys(secrets || {}));
     console.log('Available data:', Object.keys(data || {}));
-    
-    // Log full response to debug
     console.log('Full credentials response:', JSON.stringify(credentials, null, 2));
     
+    // ✅ FIX: ใช้ POSTGRES_URI จาก envs ก่อน
     let connectionString = 
+      envs?.POSTGRES_URI || 
+      envs?.POSTGRES_URI_ADMIN ||
       secrets?.POSTGRES_URI || 
       secrets?.DATABASE_URL ||
       data?.POSTGRES_URI ||
       data?.DATABASE_URL;
     
     if (!connectionString) {
-      let host = secrets?.HOST || secrets?.POSTGRES_HOST || data?.HOST || data?.POSTGRES_HOST;
-      const port = secrets?.PORT || secrets?.POSTGRES_PORT || data?.PORT || data?.POSTGRES_PORT || '5432';
-      const database = secrets?.DATABASE || secrets?.POSTGRES_DB || data?.DATABASE || data?.POSTGRES_DB;
-      const username = secrets?.USERNAME || secrets?.POSTGRES_USER || secrets?.USER || data?.USERNAME || data?.POSTGRES_USER || data?.USER;
-      const password = secrets?.PASSWORD || secrets?.POSTGRES_PASSWORD || data?.PASSWORD || data?.POSTGRES_PASSWORD;
-      
-      // If no HOST in secrets, get from addon details
-      if (!host) {
-        console.log('⚠️ No HOST in credentials, fetching from addon details...');
-        const addonDetailsResponse = await fetch(
-          `https://api.northflank.com/v1/projects/${projectId}/addons/${postgresAddon.id}`,
-          {
-            headers: {
-              Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
-              'Content-Type': 'application/json',
-            },
-          }
-        );
-        
-        if (addonDetailsResponse.ok) {
-          const addonDetails = await addonDetailsResponse.json();
-          host = addonDetails.data?.cluster?.loadBalancers?.[0] || 
-                 addonDetails.data?.networking?.host ||
-                 `${postgresAddon.id}.${addonDetails.data?.cluster?.namespace}.svc.cluster.local`;
-          console.log('✅ HOST found from addon details:', host);
-        }
-      }
+      // ใช้ HOST จาก envs แทน
+      let host = envs?.HOST || secrets?.HOST || data?.HOST;
+      const port = envs?.PORT || secrets?.PORT || data?.PORT || '5432';
+      const database = secrets?.DATABASE || data?.DATABASE;
+      const username = secrets?.USERNAME || secrets?.ADMIN_USERNAME || data?.USERNAME;
+      const password = secrets?.PASSWORD || secrets?.ADMIN_PASSWORD || data?.PASSWORD;
       
       if (host && database && username && password) {
         connectionString = `postgresql://${username}:${password}@${host}:${port}/${database}?sslmode=require`;
-        console.log('✅ Built connection string from individual credentials');
+        console.log('✅ Built connection string from credentials');
       } else {
         console.error('❌ Missing required connection credentials');
         console.log('Available:', { host: !!host, database: !!database, username: !!username, password: !!password });
