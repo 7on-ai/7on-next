@@ -348,74 +348,52 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
           <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-[#FF6B5B]/40 to-transparent mt-4 mb-4 rounded-full" />
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" onMouseEnter={() => setHovering(true)} onMouseLeave={() => setHovering(false)}>
-            {/* Card 1: Active Connections + Current Plan + Memory Button */}
-            <div className="relative p-6 rounded-2xl transition-all bg-white/30 dark:bg-white/10 border border-white/30 dark:border-white/10 shadow-[0_8px_32px_rgba(2,6,23,0.08)] hover:bg-white/40 dark:hover:bg-white/8">
-              <div className="flex items-center justify-center mb-3">
-                <h3 className="text-slate-800 dark:text-slate-200 text-lg font-semibold">Dashboard</h3>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 mb-4">
+            {/* Card 1: Stats + Memory Button */}
+            <div className="relative p-6 rounded-2xl transition-all flex flex-col items-center justify-center">
+              <div className="grid grid-cols-2 gap-8 mb-8">
                 <div className="text-center">
-                  <div className="text-xs text-slate-600 dark:text-slate-400 mb-1">Connections</div>
-                  <div className="text-2xl font-bold text-slate-900 dark:text-white">{stats.activeConnections}</div>
+                  <div className="text-sm text-slate-600 dark:text-slate-400 mb-2">Connections</div>
+                  <div className="text-5xl font-bold text-slate-900 dark:text-white">{stats.activeConnections}</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-xs text-slate-600 dark:text-slate-400 mb-1">Plan</div>
-                  <div className="text-2xl font-bold text-slate-900 dark:text-white">{currentTier}</div>
+                  <div className="text-sm text-slate-600 dark:text-slate-400 mb-2">Plan</div>
+                  <div className="text-5xl font-bold text-slate-900 dark:text-white">{currentTier}</div>
                 </div>
               </div>
 
-              <div className="w-full h-px bg-slate-200/40 dark:bg-slate-700/40 my-4" />
-
-              {/* 🆕 Memory Button */}
-              <div className="mb-4">
+              {/* Memory Button - Circular */}
+              <div className="flex items-center justify-center">
                 {memoryButtonReady ? (
                   <Link href="/dashboard/memories" className="block">
-                    <button className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl transition transform hover:scale-[1.02] hover:shadow-lg border border-slate-200/40 dark:border-slate-700/30 bg-gradient-to-r from-purple-500 to-indigo-600 text-white">
-                      <Database className="h-5 w-5" />
-                      <span className="text-sm font-medium">Memory Matrix</span>
+                    <button className="group relative w-32 h-32 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:scale-105 flex flex-col items-center justify-center gap-2">
+                      <Database className="h-8 w-8 text-white" />
+                      <span className="text-xs font-semibold text-white">Memory Matrix</span>
                     </button>
                   </Link>
                 ) : (
                   <button
                     onClick={handleMemorySetup}
                     disabled={memoryButtonDisabled}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl transition transform hover:scale-[1.02] hover:shadow-lg border border-slate-200/40 dark:border-slate-700/30 bg-white/30 dark:bg-white/5 backdrop-blur-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="group relative w-32 h-32 rounded-full bg-white/30 dark:bg-white/5 backdrop-blur-sm border-2 border-slate-300/40 dark:border-slate-700/40 hover:border-slate-400/60 dark:hover:border-slate-600/60 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex flex-col items-center justify-center gap-2"
                   >
                     {setupLoading ? (
                       <>
-                        <Loader2 className="h-5 w-5 animate-spin text-slate-600 dark:text-slate-300" />
-                        <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Setting up...</span>
+                        <Loader2 className="h-8 w-8 animate-spin text-slate-600 dark:text-slate-300" />
+                        <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">Setting up...</span>
                       </>
                     ) : !memoriesStatus.projectReady ? (
                       <>
-                        <Database className="h-5 w-5 text-slate-600 dark:text-slate-300" />
-                        <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Initializing...</span>
+                        <Database className="h-8 w-8 text-slate-600 dark:text-slate-300" />
+                        <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">Initializing...</span>
                       </>
                     ) : (
                       <>
-                        <Database className="h-5 w-5 text-slate-800 dark:text-slate-100" />
-                        <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Setup Database</span>
+                        <Database className="h-8 w-8 text-slate-800 dark:text-slate-100" />
+                        <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">Setup Memory</span>
                       </>
                     )}
                   </button>
                 )}
-              </div>
-
-              {/* Status Checklist */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-xs">
-                  <div className={`w-1.5 h-1.5 rounded-full ${memoriesStatus.hasCredential ? 'bg-green-500' : 'bg-slate-400 dark:bg-slate-600'}`} />
-                  <span className="text-slate-600 dark:text-slate-400">
-                    {memoriesStatus.hasCredential ? 'Credentials Ready' : 'Credentials Pending'}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 text-xs">
-                  <div className={`w-1.5 h-1.5 rounded-full ${memoriesStatus.isInitialized ? 'bg-green-500' : 'bg-slate-400 dark:bg-slate-600'}`} />
-                  <span className="text-slate-600 dark:text-slate-400">
-                    {memoriesStatus.isInitialized ? 'Schema Initialized' : 'Schema Not Ready'}
-                  </span>
-                </div>
               </div>
             </div>
 
