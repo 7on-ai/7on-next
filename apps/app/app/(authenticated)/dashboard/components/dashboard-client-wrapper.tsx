@@ -349,26 +349,26 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" onMouseEnter={() => setHovering(true)} onMouseLeave={() => setHovering(false)}>
             {/* Card 1: Active Connections + Current Plan + Memory Button */}
-            <div className="relative p-6 rounded-2xl transition-all">
-              <div className="flex items-center justify-center mb-4">
-                <h3 className="text-slate-800 dark:text-slate-200 text-lg font-semibold">Active Connections</h3>
+            <div className="relative p-6 rounded-2xl transition-all bg-white/30 dark:bg-white/10 border border-white/30 dark:border-white/10 shadow-[0_8px_32px_rgba(2,6,23,0.08)] hover:bg-white/40 dark:hover:bg-white/8">
+              <div className="flex items-center justify-center mb-3">
+                <h3 className="text-slate-800 dark:text-slate-200 text-lg font-semibold">Dashboard</h3>
               </div>
 
-              <div className="mb-6 text-center">
-                <div className="mt-1 text-4xl text-slate-900 dark:text-white">{stats.activeConnections}</div>
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="text-center">
+                  <div className="text-xs text-slate-600 dark:text-slate-400 mb-1">Connections</div>
+                  <div className="text-2xl font-bold text-slate-900 dark:text-white">{stats.activeConnections}</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-xs text-slate-600 dark:text-slate-400 mb-1">Plan</div>
+                  <div className="text-2xl font-bold text-slate-900 dark:text-white">{currentTier}</div>
+                </div>
               </div>
 
               <div className="w-full h-px bg-slate-200/40 dark:bg-slate-700/40 my-4" />
 
-              <div className="flex flex-col items-center justify-center text-center">
-                <div>
-                  <h4 className="text-slate-700 dark:text-slate-200 text-lg font-semibold">Current Plan</h4>
-                  <div className="mt-1 text-4xl font-semibold text-slate-900 dark:text-white">{currentTier}</div>
-                </div>
-              </div>
-
               {/* 🆕 Memory Button */}
-              <div className="mt-6">
+              <div className="mb-4">
                 {memoryButtonReady ? (
                   <Link href="/dashboard/memories" className="block">
                     <button className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl transition transform hover:scale-[1.02] hover:shadow-lg border border-slate-200/40 dark:border-slate-700/30 bg-gradient-to-r from-purple-500 to-indigo-600 text-white">
@@ -390,7 +390,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
                     ) : !memoriesStatus.projectReady ? (
                       <>
                         <Database className="h-5 w-5 text-slate-600 dark:text-slate-300" />
-                        <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Project initializing...</span>
+                        <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Initializing...</span>
                       </>
                     ) : (
                       <>
@@ -400,6 +400,22 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
                     )}
                   </button>
                 )}
+              </div>
+
+              {/* Status Checklist */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-xs">
+                  <div className={`w-1.5 h-1.5 rounded-full ${memoriesStatus.hasCredential ? 'bg-green-500' : 'bg-slate-400 dark:bg-slate-600'}`} />
+                  <span className="text-slate-600 dark:text-slate-400">
+                    {memoriesStatus.hasCredential ? 'Credentials Ready' : 'Credentials Pending'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <div className={`w-1.5 h-1.5 rounded-full ${memoriesStatus.isInitialized ? 'bg-green-500' : 'bg-slate-400 dark:bg-slate-600'}`} />
+                  <span className="text-slate-600 dark:text-slate-400">
+                    {memoriesStatus.isInitialized ? 'Schema Initialized' : 'Schema Not Ready'}
+                  </span>
+                </div>
               </div>
             </div>
 
