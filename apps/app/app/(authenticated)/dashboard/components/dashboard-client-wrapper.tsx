@@ -372,10 +372,10 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
               {memoryButtonReady ? (
                 <Link href="/dashboard/memories" className="block">
                   <button
-                    className="relative flex flex-col items-center justify-center w-28 h-28 rounded-full 
-                               transition transform hover:scale-105 hover:shadow-lg 
-                               border border-slate-200/40 dark:border-slate-700/30 
-                               bg-gradient-to-r from-purple-500 to-indigo-600 text-white"
+                    className={`relative flex flex-col items-center justify-center w-28 h-28 rounded-full 
+            transition transform hover:scale-105 hover:shadow-lg 
+            border border-slate-200/40 dark:border-slate-700/30 
+            bg-gradient-to-r from-purple-500 to-indigo-600 text-white`}
                   >
                     <div className="absolute top-3">
                       <ConnectionStatusIndicator status="connected" />
