@@ -1,13 +1,10 @@
-// apps/app/app/api/memories/setup/route.ts
+// apps/app/app/api/memories/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { database as db } from '@repo/database';
 
 const NORTHFLANK_API_TOKEN = process.env.NORTHFLANK_API_TOKEN!;
 
-/**
- * POST /api/memories/setup - Manual database setup
- */
 export async function POST(request: NextRequest) {
   try {
     console.log('🚀 Memory setup started');
@@ -87,9 +84,6 @@ export async function POST(request: NextRequest) {
     
     console.log('✅ Prerequisites validated');
     
-    // ========================================
-    // STEP 1: Get Postgres Connection
-    // ========================================
     console.log('📝 Getting Postgres connection...');
     const postgresConnection = await getPostgresConnection(user.northflankProjectId);
     
@@ -103,9 +97,6 @@ export async function POST(request: NextRequest) {
     
     console.log('✅ Postgres connection retrieved');
     
-    // ========================================
-    // STEP 2: Initialize Schema
-    // ========================================
     console.log('📝 Initializing schema...');
     
     try {
@@ -137,9 +128,6 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // ========================================
-    // STEP 3: Create N8N Credential
-    // ========================================
     console.log('📝 Creating N8N credential...');
     
     try {
@@ -167,9 +155,6 @@ export async function POST(request: NextRequest) {
       
       console.log('✅ N8N credential created:', credentialId);
       
-      // ========================================
-      // STEP 4: Update Database
-      // ========================================
       await db.user.update({
         where: { id: user.id },
         data: {
@@ -223,17 +208,10 @@ export async function POST(request: NextRequest) {
   }
 }
 
-/**
- * ✅ FIXED: ใช้ Addons API แทน Secret Groups API
- * วิธีที่ถูกต้องตาม Northflank API Documentation
- */
 async function getPostgresConnection(projectId: string) {
   try {
     console.log('📝 Getting Postgres connection from Northflank Addons API...');
     
-    // ========================================
-    // STEP 1: List all addons in the project
-    // ========================================
     const addonsResponse = await fetch(
       `https://api.northflank.com/v1/projects/${projectId}/addons`,
       {
@@ -253,9 +231,6 @@ async function getPostgresConnection(projectId: string) {
     const addonsData = await addonsResponse.json();
     console.log('📦 Found', addonsData.data?.addons?.length || 0, 'addons');
     
-    // ========================================
-    // STEP 2: Find PostgreSQL addon
-    // ========================================
     const addons = addonsData.data?.addons || [];
     const postgresAddon = addons.find(
       (addon: any) => addon.spec?.type === 'postgresql'
@@ -277,7 +252,6 @@ async function getPostgresConnection(projectId: string) {
       status: postgresAddon.status,
     });
     
-    // Check if addon is running, if paused try to resume
     if (postgresAddon.status === 'paused') {
       console.log('⏸️ PostgreSQL addon is paused, attempting to resume...');
       
@@ -296,9 +270,8 @@ async function getPostgresConnection(projectId: string) {
         if (resumeResponse.ok) {
           console.log('✅ PostgreSQL addon resume initiated');
           console.log('⏳ Waiting 30 seconds for database to start...');
-          await new Promise(resolve => setTimeout(resolve, 30000)); // Wait 30s
+          await new Promise(resolve => setTimeout(resolve, 30000));
           
-          // Refetch addon status
           const statusResponse = await fetch(
             `https://api.northflank.com/v1/projects/${projectId}/addons/${postgresAddon.id}`,
             {
@@ -332,9 +305,6 @@ async function getPostgresConnection(projectId: string) {
       return null;
     }
     
-    // ========================================
-    // STEP 3: Get addon credentials (connection info)
-    // ========================================
     console.log('📝 Getting PostgreSQL addon credentials...');
     
     const credentialsResponse = await fetch(
@@ -367,21 +337,41 @@ async function getPostgresConnection(projectId: string) {
     console.log('Available secrets:', Object.keys(secrets || {}));
     console.log('Available data:', Object.keys(data || {}));
     
-    // ========================================
-    // STEP 4: Return connection information
-    // ========================================
-    const connectionString = connection.connectionString || 
-      `postgresql://${connection.user}:${connection.password}@${connection.host}:${connection.port}/${connection.database}?sslmode=require`;
+    let connectionString = 
+      secrets?.POSTGRES_URI || 
+      secrets?.DATABASE_URL ||
+      data?.POSTGRES_URI ||
+      data?.DATABASE_URL;
+    
+    if (!connectionString) {
+      const host = secrets?.HOST || data?.HOST;
+      const port = secrets?.PORT || data?.PORT || '5432';
+      const database = secrets?.DATABASE || data?.DATABASE;
+      const username = secrets?.USERNAME || data?.USERNAME;
+      const password = secrets?.PASSWORD || data?.PASSWORD;
+      
+      if (host && database && username && password) {
+        connectionString = `postgresql://${username}:${password}@${host}:${port}/${database}?sslmode=require`;
+        console.log('✅ Built connection string from individual credentials');
+      } else {
+        console.error('❌ Missing required connection credentials');
+        console.log('Available:', { host: !!host, database: !!database, username: !!username, password: !!password });
+        return null;
+      }
+    } else {
+      console.log('✅ Found connection string:', connectionString.substring(0, 30) + '...[REDACTED]');
+    }
+    
+    const parsed = parsePostgresUrl(connectionString);
+    
+    if (!parsed) {
+      console.error('❌ Failed to parse connection string');
+      return null;
+    }
     
     return {
       connectionString,
-      config: {
-        host: connection.host,
-        port: parseInt(String(connection.port || '5432'), 10),
-        database: connection.database,
-        user: connection.user,
-        password: connection.password,
-      },
+      config: parsed,
     };
     
   } catch (error) {
@@ -394,12 +384,8 @@ async function getPostgresConnection(projectId: string) {
   }
 }
 
-/**
- * Helper: Parse Postgres URL (kept for reference, but not needed anymore)
- */
 function parsePostgresUrl(url: string) {
   try {
-    // postgresql://user:password@host:port/database
     const regex = /postgresql:\/\/([^:]+):([^@]+)@([^:]+):(\d+)\/([^?]+)/;
     const match = url.match(regex);
     
