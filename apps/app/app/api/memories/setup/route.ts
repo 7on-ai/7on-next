@@ -1,4 +1,4 @@
-// apps/app/app/api/memories/setup/route.ts
+// apps/app/app/api/memories/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { database as db } from '@repo/database';
@@ -285,28 +285,6 @@ async function getPostgresConnection(projectId: string) {
       return null;
     }
     
-    // ✅ Get addon details for external host
-    console.log('📝 Getting addon details for external host...');
-    const addonDetailsResponse = await fetch(
-      `https://api.northflank.com/v1/projects/${projectId}/addons/${postgresAddon.id}`,
-      {
-        headers: {
-          Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-    
-    let externalHost: string | null = null;
-    if (addonDetailsResponse.ok) {
-      const addonDetails = await addonDetailsResponse.json();
-      externalHost = 
-        addonDetails.data?.cluster?.loadBalancers?.[0] || 
-        addonDetails.data?.networking?.externalHost ||
-        addonDetails.data?.networking?.host;
-      console.log('✅ External host found:', externalHost);
-    }
-    
     console.log('📝 Getting PostgreSQL addon credentials...');
     
     const credentialsResponse = await fetch(
@@ -326,36 +304,18 @@ async function getPostgresConnection(projectId: string) {
     }
     
     const credentials = await credentialsResponse.json();
-    const secrets = credentials.data?.secrets;
     const envs = credentials.data?.envs;
     
-    if (!secrets && !envs) {
-      console.error('❌ No credentials found in response');
+    // ✅ Use POSTGRES_URI directly from envs (internal network URI)
+    const connectionString = envs?.POSTGRES_URI || envs?.POSTGRES_URI_ADMIN;
+    
+    if (!connectionString) {
+      console.error('❌ No POSTGRES_URI found in credentials');
+      console.log('Available envs:', Object.keys(envs || {}));
       return null;
     }
     
-    console.log('✅ Credentials retrieved');
-    
-    // ✅ Build connection string with EXTERNAL host
-    const database = secrets?.DATABASE;
-    const username = secrets?.USERNAME || secrets?.ADMIN_USERNAME;
-    const password = secrets?.PASSWORD || secrets?.ADMIN_PASSWORD;
-    const port = envs?.PORT || '5432';
-    
-    if (!externalHost || !database || !username || !password) {
-      console.error('❌ Missing required connection credentials');
-      console.log('Available:', { 
-        externalHost: !!externalHost, 
-        database: !!database, 
-        username: !!username, 
-        password: !!password 
-      });
-      return null;
-    }
-    
-    // ✅ CRITICAL: Use external host for connection from Vercel
-    const connectionString = `postgresql://${username}:${password}@${externalHost}:${port}/${database}?sslmode=require`;
-    console.log('✅ Built external connection string:', connectionString.substring(0, 30) + '...[REDACTED]');
+    console.log('✅ Connection string retrieved:', connectionString.substring(0, 30) + '...[REDACTED]');
     
     const parsed = parsePostgresUrl(connectionString);
     
