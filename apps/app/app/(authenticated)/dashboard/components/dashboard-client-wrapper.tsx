@@ -367,37 +367,45 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
                 </div>
               </div>
 
-              {/* 🆕 Memory Button */}
+              {/* Memory Button */}
               <div className="mt-6">
                 {memoryButtonReady ? (
                   <Link href="/dashboard/memories" className="block">
-                    <button className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl transition transform hover:scale-[1.02] hover:shadow-lg border border-slate-200/40 dark:border-slate-700/30 bg-gradient-to-r from-purple-500 to-indigo-600 text-white">
-                      <Database className="h-5 w-5" />
-                      <span className="text-sm font-medium">Memory Matrix</span>
+                    <button className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl transition transform hover:scale-[1.01] hover:shadow-lg border border-slate-200/40 dark:border-slate-700/30 bg-gradient-to-r from-purple-500 to-indigo-600 text-white">
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-white/20">
+                          <Database className="h-5 w-5" />
+                        </div>
+                        <div className="text-sm font-medium">Memory Matrix</div>
+                      </div>
+                      <ConnectionStatusIndicator status="connected" />
                     </button>
                   </Link>
                 ) : (
                   <button
                     onClick={handleMemorySetup}
                     disabled={memoryButtonDisabled}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl transition transform hover:scale-[1.02] hover:shadow-lg border border-slate-200/40 dark:border-slate-700/30 bg-white/30 dark:bg-white/5 backdrop-blur-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl transition transform hover:scale-[1.01] hover:shadow-lg border border-slate-200/40 dark:border-slate-700/30 bg-white/30 dark:bg-white/5 backdrop-blur-sm disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {setupLoading ? (
-                      <>
-                        <Loader2 className="h-5 w-5 animate-spin text-slate-600 dark:text-slate-300" />
-                        <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Setting up...</span>
-                      </>
-                    ) : !memoriesStatus.projectReady ? (
-                      <>
-                        <Database className="h-5 w-5 text-slate-600 dark:text-slate-300" />
-                        <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Project initializing...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Database className="h-5 w-5 text-slate-800 dark:text-slate-100" />
-                        <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Setup Database</span>
-                      </>
-                    )}
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-white/30 dark:bg-white/5">
+                        {setupLoading ? (
+                          <Loader2 className="h-5 w-5 animate-spin text-slate-600 dark:text-slate-300" />
+                        ) : (
+                          <Database className="h-5 w-5 text-slate-800 dark:text-slate-100" />
+                        )}
+                      </div>
+                      <div className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                        {setupLoading ? 'Setting up...' : !memoriesStatus.projectReady ? 'Initializing...' : 'Setup Memory'}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {setupLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-slate-600 dark:text-slate-300" />
+                      ) : (
+                        <ConnectionStatusIndicator status="disconnected" />
+                      )}
+                    </div>
                   </button>
                 )}
               </div>

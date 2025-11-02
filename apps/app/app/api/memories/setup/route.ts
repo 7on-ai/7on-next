@@ -337,6 +337,9 @@ async function getPostgresConnection(projectId: string) {
     console.log('Available secrets:', Object.keys(secrets || {}));
     console.log('Available data:', Object.keys(data || {}));
     
+    // Log full response to debug
+    console.log('Full credentials response:', JSON.stringify(credentials, null, 2));
+    
     let connectionString = 
       secrets?.POSTGRES_URI || 
       secrets?.DATABASE_URL ||
@@ -344,11 +347,11 @@ async function getPostgresConnection(projectId: string) {
       data?.DATABASE_URL;
     
     if (!connectionString) {
-      let host = secrets?.HOST || data?.HOST;
-      const port = secrets?.PORT || data?.PORT || '5432';
-      const database = secrets?.DATABASE || data?.DATABASE;
-      const username = secrets?.USERNAME || data?.USERNAME;
-      const password = secrets?.PASSWORD || data?.PASSWORD;
+      let host = secrets?.HOST || secrets?.POSTGRES_HOST || data?.HOST || data?.POSTGRES_HOST;
+      const port = secrets?.PORT || secrets?.POSTGRES_PORT || data?.PORT || data?.POSTGRES_PORT || '5432';
+      const database = secrets?.DATABASE || secrets?.POSTGRES_DB || data?.DATABASE || data?.POSTGRES_DB;
+      const username = secrets?.USERNAME || secrets?.POSTGRES_USER || secrets?.USER || data?.USERNAME || data?.POSTGRES_USER || data?.USER;
+      const password = secrets?.PASSWORD || secrets?.POSTGRES_PASSWORD || data?.PASSWORD || data?.POSTGRES_PASSWORD;
       
       // If no HOST in secrets, get from addon details
       if (!host) {
