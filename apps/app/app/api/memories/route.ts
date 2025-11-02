@@ -271,26 +271,6 @@ async function getPostgresConnection(projectId: string) {
           console.log('✅ PostgreSQL addon resume initiated');
           console.log('⏳ Waiting 30 seconds for database to start...');
           await new Promise(resolve => setTimeout(resolve, 30000));
-          
-          const statusResponse = await fetch(
-            `https://api.northflank.com/v1/projects/${projectId}/addons/${postgresAddon.id}`,
-            {
-              headers: {
-                Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
-                'Content-Type': 'application/json',
-              },
-            }
-          );
-          
-          if (statusResponse.ok) {
-            const statusData = await statusResponse.json();
-            const newStatus = statusData.data?.status;
-            console.log('📊 Current addon status:', newStatus);
-            
-            if (newStatus !== 'running') {
-              console.log('⚠️ Addon not yet running, but will proceed anyway');
-            }
-          }
         } else {
           const errorText = await resumeResponse.text();
           console.error('❌ Failed to resume addon:', resumeResponse.status, errorText);
@@ -303,6 +283,28 @@ async function getPostgresConnection(projectId: string) {
     } else if (postgresAddon.status !== 'running') {
       console.error('❌ PostgreSQL addon is not running:', postgresAddon.status);
       return null;
+    }
+    
+    // ✅ Get addon details for external host
+    console.log('📝 Getting addon details for external host...');
+    const addonDetailsResponse = await fetch(
+      `https://api.northflank.com/v1/projects/${projectId}/addons/${postgresAddon.id}`,
+      {
+        headers: {
+          Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+    
+    let externalHost: string | null = null;
+    if (addonDetailsResponse.ok) {
+      const addonDetails = await addonDetailsResponse.json();
+      externalHost = 
+        addonDetails.data?.cluster?.loadBalancers?.[0] || 
+        addonDetails.data?.networking?.externalHost ||
+        addonDetails.data?.networking?.host;
+      console.log('✅ External host found:', externalHost);
     }
     
     console.log('📝 Getting PostgreSQL addon credentials...');
@@ -325,48 +327,35 @@ async function getPostgresConnection(projectId: string) {
     
     const credentials = await credentialsResponse.json();
     const secrets = credentials.data?.secrets;
-    const data = credentials.data?.data;
     const envs = credentials.data?.envs;
     
-    if (!secrets && !data && !envs) {
+    if (!secrets && !envs) {
       console.error('❌ No credentials found in response');
-      console.log('Credentials response:', JSON.stringify(credentials, null, 2));
       return null;
     }
     
     console.log('✅ Credentials retrieved');
-    console.log('Available secrets:', Object.keys(secrets || {}));
-    console.log('Available data:', Object.keys(data || {}));
-    console.log('Full credentials response:', JSON.stringify(credentials, null, 2));
     
-    // ✅ FIX: ใช้ POSTGRES_URI จาก envs ก่อน
-    let connectionString = 
-      envs?.POSTGRES_URI || 
-      envs?.POSTGRES_URI_ADMIN ||
-      secrets?.POSTGRES_URI || 
-      secrets?.DATABASE_URL ||
-      data?.POSTGRES_URI ||
-      data?.DATABASE_URL;
+    // ✅ Build connection string with EXTERNAL host
+    const database = secrets?.DATABASE;
+    const username = secrets?.USERNAME || secrets?.ADMIN_USERNAME;
+    const password = secrets?.PASSWORD || secrets?.ADMIN_PASSWORD;
+    const port = envs?.PORT || '5432';
     
-    if (!connectionString) {
-      // ใช้ HOST จาก envs แทน
-      let host = envs?.HOST || secrets?.HOST || data?.HOST;
-      const port = envs?.PORT || secrets?.PORT || data?.PORT || '5432';
-      const database = secrets?.DATABASE || data?.DATABASE;
-      const username = secrets?.USERNAME || secrets?.ADMIN_USERNAME || data?.USERNAME;
-      const password = secrets?.PASSWORD || secrets?.ADMIN_PASSWORD || data?.PASSWORD;
-      
-      if (host && database && username && password) {
-        connectionString = `postgresql://${username}:${password}@${host}:${port}/${database}?sslmode=require`;
-        console.log('✅ Built connection string from credentials');
-      } else {
-        console.error('❌ Missing required connection credentials');
-        console.log('Available:', { host: !!host, database: !!database, username: !!username, password: !!password });
-        return null;
-      }
-    } else {
-      console.log('✅ Found connection string:', connectionString.substring(0, 30) + '...[REDACTED]');
+    if (!externalHost || !database || !username || !password) {
+      console.error('❌ Missing required connection credentials');
+      console.log('Available:', { 
+        externalHost: !!externalHost, 
+        database: !!database, 
+        username: !!username, 
+        password: !!password 
+      });
+      return null;
     }
+    
+    // ✅ CRITICAL: Use external host for connection from Vercel
+    const connectionString = `postgresql://${username}:${password}@${externalHost}:${port}/${database}?sslmode=require`;
+    console.log('✅ Built external connection string:', connectionString.substring(0, 30) + '...[REDACTED]');
     
     const parsed = parsePostgresUrl(connectionString);
     
