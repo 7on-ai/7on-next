@@ -349,67 +349,58 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" onMouseEnter={() => setHovering(true)} onMouseLeave={() => setHovering(false)}>
             {/* Card 1: Active Connections + Current Plan + Memory Button */}
-            <div className="relative p-6 rounded-2xl transition-all">
-              <div className="flex items-center justify-center mb-4">
-                <h3 className="text-slate-800 dark:text-slate-200 text-lg font-semibold">Active Connections</h3>
+            <div className="relative p-6 rounded-2xl transition-all bg-white/30 dark:bg-white/10 border border-white/30 dark:border-white/10 shadow-[0_8px_32px_rgba(2,6,23,0.08)] hover:bg-white/40 dark:hover:bg-white/8">
+              <div className="flex items-center justify-center mb-3">
+                <h3 className="text-slate-800 dark:text-slate-200 text-lg font-semibold">Dashboard</h3>
               </div>
 
-              <div className="mb-6 text-center">
-                <div className="mt-1 text-4xl text-slate-900 dark:text-white">{stats.activeConnections}</div>
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="text-center">
+                  <div className="text-xs text-slate-600 dark:text-slate-400 mb-1">Connections</div>
+                  <div className="text-2xl font-bold text-slate-900 dark:text-white">{stats.activeConnections}</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-xs text-slate-600 dark:text-slate-400 mb-1">Plan</div>
+                  <div className="text-2xl font-bold text-slate-900 dark:text-white">{currentTier}</div>
+                </div>
               </div>
 
               <div className="w-full h-px bg-slate-200/40 dark:bg-slate-700/40 my-4" />
 
-              <div className="flex flex-col items-center justify-center text-center">
-                <div>
-                  <h4 className="text-slate-700 dark:text-slate-200 text-lg font-semibold">Current Plan</h4>
-                  <div className="mt-1 text-4xl font-semibold text-slate-900 dark:text-white">{currentTier}</div>
-                </div>
-              </div>
-
-            {/* Memory Button */}
-            <div className="mt-6 flex justify-center">
-              {memoryButtonReady ? (
-                <Link href="/dashboard/memories" className="block">
+              {/* 🆕 Memory Button */}
+              <div className="mb-4">
+                {memoryButtonReady ? (
+                  <Link href="/dashboard/memories" className="block">
+                    <button className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl transition transform hover:scale-[1.02] hover:shadow-lg border border-slate-200/40 dark:border-slate-700/30 bg-gradient-to-r from-purple-500 to-indigo-600 text-white">
+                      <Database className="h-5 w-5" />
+                      <span className="text-sm font-medium">Memory Matrix</span>
+                    </button>
+                  </Link>
+                ) : (
                   <button
-                    className={`relative flex flex-col items-center justify-center w-28 h-28 rounded-full 
-            transition transform hover:scale-105 hover:shadow-lg 
-            border border-slate-200/40 dark:border-slate-700/30 
-            bg-gradient-to-r from-purple-500 to-indigo-600 text-white`}
+                    onClick={handleMemorySetup}
+                    disabled={memoryButtonDisabled}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl transition transform hover:scale-[1.02] hover:shadow-lg border border-slate-200/40 dark:border-slate-700/30 bg-white/30 dark:bg-white/5 backdrop-blur-sm disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <div className="absolute top-3">
-                      <ConnectionStatusIndicator status="connected" />
-                    </div>
-                    <span className="mt-6 text-sm font-medium">Memory Matrix</span>
-                  </button>
-                </Link>
-              ) : (
-                <button
-                  onClick={handleMemorySetup}
-                  disabled={memoryButtonDisabled}
-                  className="relative flex flex-col items-center justify-center w-28 h-28 rounded-full 
-                             transition transform hover:scale-105 hover:shadow-lg 
-                             border border-slate-200/40 dark:border-slate-700/30 
-                             bg-white/30 dark:bg-white/5 backdrop-blur-sm 
-                             disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <div className="absolute top-3">
                     {setupLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin text-slate-600 dark:text-slate-300" />
+                      <>
+                        <Loader2 className="h-5 w-5 animate-spin text-slate-600 dark:text-slate-300" />
+                        <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Setting up...</span>
+                      </>
+                    ) : !memoriesStatus.projectReady ? (
+                      <>
+                        <Database className="h-5 w-5 text-slate-600 dark:text-slate-300" />
+                        <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Initializing...</span>
+                      </>
                     ) : (
-                      <ConnectionStatusIndicator status="disconnected" />
+                      <>
+                        <Database className="h-5 w-5 text-slate-800 dark:text-slate-100" />
+                        <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Setup Database</span>
+                      </>
                     )}
-                  </div>
-                  <span className="mt-6 text-sm font-medium text-slate-800 dark:text-slate-100">
-                    {setupLoading
-                      ? 'Setting up...'
-                      : !memoriesStatus.projectReady
-                      ? 'Initializing...'
-                      : 'Memory Matrix'}
-                  </span>
-                </button>
-              )}
-            </div>
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Card 2: Available Integrations */}
