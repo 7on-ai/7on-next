@@ -344,11 +344,33 @@ async function getPostgresConnection(projectId: string) {
       data?.DATABASE_URL;
     
     if (!connectionString) {
-      const host = secrets?.HOST || data?.HOST;
+      let host = secrets?.HOST || data?.HOST;
       const port = secrets?.PORT || data?.PORT || '5432';
       const database = secrets?.DATABASE || data?.DATABASE;
       const username = secrets?.USERNAME || data?.USERNAME;
       const password = secrets?.PASSWORD || data?.PASSWORD;
+      
+      // If no HOST in secrets, get from addon details
+      if (!host) {
+        console.log('⚠️ No HOST in credentials, fetching from addon details...');
+        const addonDetailsResponse = await fetch(
+          `https://api.northflank.com/v1/projects/${projectId}/addons/${postgresAddon.id}`,
+          {
+            headers: {
+              Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+        
+        if (addonDetailsResponse.ok) {
+          const addonDetails = await addonDetailsResponse.json();
+          host = addonDetails.data?.cluster?.loadBalancers?.[0] || 
+                 addonDetails.data?.networking?.host ||
+                 `${postgresAddon.id}.${addonDetails.data?.cluster?.namespace}.svc.cluster.local`;
+          console.log('✅ HOST found from addon details:', host);
+        }
+      }
       
       if (host && database && username && password) {
         connectionString = `postgresql://${username}:${password}@${host}:${port}/${database}?sslmode=require`;
