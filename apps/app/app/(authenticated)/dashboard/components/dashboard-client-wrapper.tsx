@@ -62,8 +62,6 @@ const TIER_FEATURES: Record<string, string[]> = {
   BUSINESS: ["google", "github", "spotify", "discord", "linkedin"],
 };
 
-const POLLING_INTERVAL = 60000;
-
 /* ------------------------------- Utilities -------------------------------- */
 const createOAuthState = (userId: string, service: string): string => {
   try {
@@ -217,7 +215,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
     } catch (e) {
       console.error("Error fetching connection status:", e);
     }
-  }, [userId, services]);
+  }, [userId]);
 
   const fetchStats = useCallback(async () => {
     if (!userId) return;
@@ -239,19 +237,22 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
     }
   }, [userId]);
 
+  // ✅ FIX: Fetch only on mount and when needed
   useEffect(() => {
     fetchStats();
     fetchConnectionStatus();
   }, [fetchStats, fetchConnectionStatus]);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetchStats();
-      fetchConnectionStatus();
-    }, POLLING_INTERVAL);
-    return () => clearInterval(interval);
-  }, [fetchStats, fetchConnectionStatus]);
+  // ✅ REMOVED: Automatic polling every 60 seconds
+  // useEffect(() => {
+  //   const interval = setInterval(() => {
+  //     fetchStats();
+  //     fetchConnectionStatus();
+  //   }, POLLING_INTERVAL);
+  //   return () => clearInterval(interval);
+  // }, [fetchStats, fetchConnectionStatus]);
 
+  // ✅ FIX: Only fetch when tab becomes visible (user returns)
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
@@ -271,6 +272,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
     if (connected && status === "success") {
       showToast(`✅ Successfully connected ${connected}!`);
       clearUrlParams(["connected", "status", "timestamp"]);
+      // ✅ FIX: Fetch after successful connection
       fetchStats();
       fetchConnectionStatus();
     } else if (error) {
@@ -305,7 +307,6 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
     }
   };
 
-  // 🆕 Handle memory setup
   const handleMemorySetup = async () => {
     if (!userId) return;
     
@@ -319,7 +320,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
       
       if (response.ok) {
         showToast('✅ Database setup completed!');
-        // Refresh status
+        // ✅ FIX: Refresh status after setup
         await fetchStats();
       } else {
         showToast(`❌ Setup failed: ${data.error}`);
@@ -332,7 +333,6 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
     }
   };
 
-  // Determine memory button state
   const memoryButtonReady = memoriesStatus.isInitialized && memoriesStatus.hasCredential;
   const memoryButtonDisabled = !memoriesStatus.projectReady || setupLoading;
 
@@ -367,7 +367,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
 
               <div className="w-full h-px bg-slate-200/40 dark:bg-slate-700/40 my-4" />
 
-              {/* 🆕 Memory Button */}
+              {/* Memory Button */}
               <div className="mb-4">
                 {memoryButtonReady ? (
                   <Link href="/dashboard/memories" className="block">
@@ -395,7 +395,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
                     ) : (
                       <>
                         <Database className="h-5 w-5 text-slate-800 dark:text-slate-100" />
-                        <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Setup Database</span>
+                        <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Setup Memory</span>
                       </>
                     )}
                   </button>
