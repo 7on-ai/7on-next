@@ -3,9 +3,15 @@ import { Client } from 'pg';
 
 /**
  * Initialize Postgres schema and tables for user memories
+ * ✅ Now supports both regular and admin connection strings
  */
-export async function initializeUserPostgresSchema(connectionString: string): Promise<boolean> {
-  const client = new Client({ connectionString });
+export async function initializeUserPostgresSchema(
+  connectionString: string,
+  adminConnectionString?: string
+): Promise<boolean> {
+  // ✅ Use admin connection for schema creation if provided
+  const setupConnectionString = adminConnectionString || connectionString;
+  const client = new Client({ connectionString: setupConnectionString });
   
   try {
     await client.connect();
@@ -15,7 +21,7 @@ export async function initializeUserPostgresSchema(connectionString: string): Pr
     await client.query(`CREATE SCHEMA IF NOT EXISTS user_data_schema`);
     console.log('✅ Schema created: user_data_schema');
     
-    // Create memories table (ลบ embedding vector เพราะ Northflank ไม่มี pgvector)
+    // Create memories table
     await client.query(`
       CREATE TABLE IF NOT EXISTS user_data_schema.memories (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -27,7 +33,7 @@ export async function initializeUserPostgresSchema(connectionString: string): Pr
     `);
     console.log('✅ Table created: memories');
     
-    // Create conversations table (optional)
+    // Create conversations table
     await client.query(`
       CREATE TABLE IF NOT EXISTS user_data_schema.conversations (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -82,6 +88,23 @@ export async function initializeUserPostgresSchema(connectionString: string): Pr
     
     console.log('✅ Triggers created');
     
+    // ✅ Grant permissions to regular user if using admin connection
+    if (adminConnectionString && adminConnectionString !== connectionString) {
+      const regularConfig = parsePostgresUrl(connectionString);
+      
+      if (regularConfig?.user) {
+        console.log(`📝 Granting permissions to user: ${regularConfig.user}`);
+        
+        await client.query(`GRANT USAGE ON SCHEMA user_data_schema TO ${regularConfig.user}`);
+        await client.query(`GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA user_data_schema TO ${regularConfig.user}`);
+        await client.query(`GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA user_data_schema TO ${regularConfig.user}`);
+        await client.query(`ALTER DEFAULT PRIVILEGES IN SCHEMA user_data_schema GRANT ALL ON TABLES TO ${regularConfig.user}`);
+        await client.query(`ALTER DEFAULT PRIVILEGES IN SCHEMA user_data_schema GRANT ALL ON SEQUENCES TO ${regularConfig.user}`);
+        
+        console.log('✅ Permissions granted to regular user');
+      }
+    }
+    
     return true;
   } catch (error) {
     console.error('❌ Error initializing postgres schema:', error);
@@ -108,5 +131,30 @@ export async function testPostgresConnection(connectionString: string): Promise<
     return false;
   } finally {
     await client.end();
+  }
+}
+
+/**
+ * Parse Postgres connection URL
+ */
+function parsePostgresUrl(url: string) {
+  try {
+    const regex = /postgresql:\/\/([^:]+):([^@]+)@([^:]+):(\d+)\/([^?]+)/;
+    const match = url.match(regex);
+    
+    if (!match) return null;
+    
+    const [, user, password, host, port, database] = match;
+    
+    return {
+      host,
+      port: parseInt(port, 10),
+      database,
+      user,
+      password,
+    };
+  } catch (error) {
+    console.error('❌ Error parsing URL:', error);
+    return null;
   }
 }
