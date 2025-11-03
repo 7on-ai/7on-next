@@ -1,4 +1,4 @@
-// apps/app/app/api/memories/setup/route.ts - FIXED VERSION
+// apps/app/app/api/memories/setup/route.ts - FINAL FIX
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { database as db } from '@repo/database';
@@ -95,22 +95,29 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    console.log('✅ Postgres connection retrieved (external)');
+    console.log('✅ Postgres connection retrieved');
+    console.log('Connection types:', {
+      hasRegular: !!postgresConnection.connectionString,
+      hasAdmin: !!postgresConnection.adminConnectionString,
+      willUseAdmin: postgresConnection.adminConnectionString !== postgresConnection.connectionString,
+    });
     
-    console.log('📝 Initializing schema...');
+    console.log('📝 Initializing schema with admin credentials...');
     
     try {
       const { initializeUserPostgresSchema } = await import('@/lib/postgres-setup');
       
+      // ✅ CRITICAL: Pass admin connection string as SECOND parameter
       const schemaSuccess = await initializeUserPostgresSchema(
-        postgresConnection.connectionString
+        postgresConnection.connectionString,      // Regular user connection
+        postgresConnection.adminConnectionString  // Admin connection for schema creation
       );
       
       if (!schemaSuccess) {
         throw new Error('Schema initialization returned false');
       }
       
-      console.log('✅ Schema initialized');
+      console.log('✅ Schema initialized successfully');
     } catch (schemaError) {
       console.error('❌ Schema initialization failed:', schemaError);
       
@@ -128,7 +135,7 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    console.log('📝 Creating N8N credential...');
+    console.log('📝 Creating N8N credential with regular user...');
     
     try {
       const { createPostgresCredentialInN8n } = await import('@/lib/n8n-credentials');
@@ -142,6 +149,7 @@ export async function POST(request: NextRequest) {
         hasPassword: !!n8nPassword,
       });
       
+      // ✅ Use regular user credentials for N8N (not admin)
       const credentialId = await createPostgresCredentialInN8n({
         n8nUrl: user.n8nUrl,
         n8nEmail,
@@ -238,11 +246,6 @@ async function getPostgresConnection(projectId: string) {
     
     if (!postgresAddon) {
       console.error('❌ No PostgreSQL addon found in project');
-      console.log('Available addons:', addons.map((a: any) => ({
-        id: a.id,
-        name: a.name,
-        type: a.spec?.type,
-      })));
       return null;
     }
     
@@ -344,20 +347,25 @@ async function getPostgresConnection(projectId: string) {
     
     console.log('Available envs:', Object.keys(envs || {}));
     
-    // ✅ FIX: ใช้ชื่อ env variable ที่ถูกต้องตาม Northflank API
+    // ✅ Get both admin and regular connection strings
+    const adminConnectionString = 
+      envs?.EXTERNAL_POSTGRES_URI_ADMIN || 
+      envs?.POSTGRES_URI_ADMIN;
+    
     const connectionString = 
       envs?.EXTERNAL_POSTGRES_URI || 
-      envs?.POSTGRES_EXTERNAL_URI || 
-      envs?.POSTGRES_URI_EXTERNAL ||
       envs?.POSTGRES_URI;
     
     if (!connectionString) {
-      console.error('❌ No connection string found in any expected field');
-      console.log('All envs:', envs);
+      console.error('❌ No connection string found');
       return null;
     }
     
-    console.log('✅ Connection string retrieved:', connectionString.substring(0, 30) + '...[REDACTED]');
+    if (!adminConnectionString) {
+      console.warn('⚠️ No admin connection string found, will use regular credentials');
+    } else {
+      console.log('✅ Both regular and admin connection strings retrieved');
+    }
     
     const parsed = parsePostgresUrl(connectionString);
     
@@ -368,6 +376,7 @@ async function getPostgresConnection(projectId: string) {
     
     return {
       connectionString,
+      adminConnectionString: adminConnectionString || connectionString,
       config: parsed,
     };
     

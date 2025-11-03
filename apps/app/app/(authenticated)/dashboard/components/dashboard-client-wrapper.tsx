@@ -350,7 +350,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" onMouseEnter={() => setHovering(true)} onMouseLeave={() => setHovering(false)}>
 
 {/* Card 1: Memory Start Button + Active Connections + Current Plan */}
-<div className="flex items-center justify-center h-full">
+<div className="relative p-6 rounded-2xl transition-all mt-4 md:mt-10">
   {/* Memory Start Button - Top Center */}
   <div className="flex flex-col items-center mb-6">
     {memoryButtonReady ? (
