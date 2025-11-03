@@ -348,60 +348,74 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
           <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-[#FF6B5B]/40 to-transparent mt-4 mb-4 rounded-full" />
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" onMouseEnter={() => setHovering(true)} onMouseLeave={() => setHovering(false)}>
-            {/* Card 1: Active Connections + Current Plan + Memory Button */}
-            <div className="relative p-6 rounded-2xl transition-all bg-white/30 dark:bg-white/10 border border-white/30 dark:border-white/10 shadow-[0_8px_32px_rgba(2,6,23,0.08)] hover:bg-white/40 dark:hover:bg-white/8">
-              <div className="flex items-center justify-center mb-3">
-                <h3 className="text-slate-800 dark:text-slate-200 text-lg font-semibold">Dashboard</h3>
-              </div>
+{/* Card 1: Memory Start Button + Active Connections + Current Plan */}
+<div className="relative p-6 rounded-2xl transition-all">
+  {/* Memory Start Button - Top Center */}
+  <div className="flex flex-col items-center mb-6">
+    {memoryButtonReady ? (
+      <Link href="/dashboard/memories" className="group">
+        <button className="relative w-20 h-20 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-110 flex items-center justify-center">
+          <Database className="h-8 w-8 text-white" />
+          {/* Status Indicator */}
+          <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-[#10b981] border-2 border-white dark:border-slate-900 shadow-[0_0_8px_rgba(16,185,129,0.5)]">
+            <div className="absolute inset-0 rounded-full bg-[#10b981] animate-ping opacity-75" />
+          </div>
+        </button>
+        <span className="block text-center mt-2 text-xs font-medium text-slate-700 dark:text-slate-300">
+          Memory Matrix
+        </span>
+      </Link>
+    ) : (
+      <div className="flex flex-col items-center">
+        <button
+          onClick={handleMemorySetup}
+          disabled={memoryButtonDisabled}
+          className="relative w-20 h-20 rounded-full bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-800 shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-110 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+        >
+          {setupLoading ? (
+            <Loader2 className="h-8 w-8 animate-spin text-slate-600 dark:text-slate-300" />
+          ) : (
+            <Database className="h-8 w-8 text-slate-600 dark:text-slate-300" />
+          )}
+          
+          {/* Status Indicator */}
+          <div className={`absolute -top-1 -right-1 w-5 h-5 rounded-full border-2 border-white dark:border-slate-900 ${
+            setupLoading 
+              ? 'bg-yellow-500 shadow-[0_0_8px_rgba(234,179,8,0.5)]' 
+              : !memoriesStatus.projectReady 
+              ? 'bg-[#f97316] shadow-[0_0_8px_rgba(249,115,22,0.5)]'
+              : 'bg-[#f97316] shadow-[0_0_8px_rgba(249,115,22,0.5)]'
+          }`}>
+            {setupLoading && (
+              <div className="absolute inset-0 rounded-full bg-yellow-500 animate-ping opacity-75" />
+            )}
+          </div>
+        </button>
+        <span className="block text-center mt-2 text-xs font-medium text-slate-700 dark:text-slate-300">
+          {setupLoading 
+            ? 'Setting up...' 
+            : !memoriesStatus.projectReady 
+            ? 'Initializing...' 
+            : 'Start'}
+        </span>
+      </div>
+    )}
+  </div>
 
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div className="text-center">
-                  <div className="text-xs text-slate-600 dark:text-slate-400 mb-1">Connections</div>
-                  <div className="text-2xl font-bold text-slate-900 dark:text-white">{stats.activeConnections}</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-xs text-slate-600 dark:text-slate-400 mb-1">Plan</div>
-                  <div className="text-2xl font-bold text-slate-900 dark:text-white">{currentTier}</div>
-                </div>
-              </div>
+  <div className="w-full h-px bg-slate-200/40 dark:bg-slate-700/40 mb-4" />
 
-              <div className="w-full h-px bg-slate-200/40 dark:bg-slate-700/40 my-4" />
-
-              {/* Memory Button */}
-              <div className="mb-4">
-                {memoryButtonReady ? (
-                  <Link href="/dashboard/memories" className="block">
-                    <button className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl transition transform hover:scale-[1.02] hover:shadow-lg border border-slate-200/40 dark:border-slate-700/30 bg-gradient-to-r from-purple-500 to-indigo-600 text-white">
-                      <Database className="h-5 w-5" />
-                      <span className="text-sm font-medium">Memory Matrix</span>
-                    </button>
-                  </Link>
-                ) : (
-                  <button
-                    onClick={handleMemorySetup}
-                    disabled={memoryButtonDisabled}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl transition transform hover:scale-[1.02] hover:shadow-lg border border-slate-200/40 dark:border-slate-700/30 bg-white/30 dark:bg-white/5 backdrop-blur-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {setupLoading ? (
-                      <>
-                        <Loader2 className="h-5 w-5 animate-spin text-slate-600 dark:text-slate-300" />
-                        <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Setting up...</span>
-                      </>
-                    ) : !memoriesStatus.projectReady ? (
-                      <>
-                        <Database className="h-5 w-5 text-slate-600 dark:text-slate-300" />
-                        <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Initializing...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Database className="h-5 w-5 text-slate-800 dark:text-slate-100" />
-                        <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Setup Memory</span>
-                      </>
-                    )}
-                  </button>
-                )}
-              </div>
-            </div>
+  {/* Stats Grid */}
+  <div className="grid grid-cols-2 gap-4">
+    <div className="text-center">
+      <div className="text-xs text-slate-600 dark:text-slate-400 mb-1">Connections</div>
+      <div className="text-2xl font-bold text-slate-900 dark:text-white">{stats.activeConnections}</div>
+    </div>
+    <div className="text-center">
+      <div className="text-xs text-slate-600 dark:text-slate-400 mb-1">Plan</div>
+      <div className="text-2xl font-bold text-slate-900 dark:text-white">{currentTier}</div>
+    </div>
+  </div>
+</div>
 
             {/* Card 2: Available Integrations */}
             <div className="p-6 rounded-2xl bg-white/30 dark:bg-white/10 border border-white/30 dark:border-white/10 shadow-[0_8px_32px_rgba(2,6,23,0.08)] transition-all hover:bg-white/40 dark:hover:bg-white/8">

@@ -1,4 +1,3 @@
-// apps/app/app/api/memories/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { database as db } from '@repo/database';
@@ -95,7 +94,7 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    console.log('✅ Postgres connection retrieved');
+    console.log('✅ Postgres connection retrieved (external)');
     
     console.log('📝 Initializing schema...');
     
@@ -250,7 +249,13 @@ async function getPostgresConnection(projectId: string) {
       id: postgresAddon.id,
       name: postgresAddon.name,
       status: postgresAddon.status,
+      externalAccessEnabled: postgresAddon.spec?.externalAccessEnabled,
     });
+    
+    if (!postgresAddon.spec?.externalAccessEnabled) {
+      console.error('❌ External access not enabled on addon');
+      return null;
+    }
     
     if (postgresAddon.status === 'paused') {
       console.log('⏸️ PostgreSQL addon is paused, attempting to resume...');
@@ -306,16 +311,15 @@ async function getPostgresConnection(projectId: string) {
     const credentials = await credentialsResponse.json();
     const envs = credentials.data?.envs;
     
-    // ✅ Use POSTGRES_URI directly from envs (internal network URI)
-    const connectionString = envs?.POSTGRES_URI || envs?.POSTGRES_URI_ADMIN;
+    const connectionString = envs?.POSTGRES_EXTERNAL_URI || envs?.POSTGRES_URI_EXTERNAL || envs?.POSTGRES_URI;
     
     if (!connectionString) {
-      console.error('❌ No POSTGRES_URI found in credentials');
+      console.error('❌ No external connection string found');
       console.log('Available envs:', Object.keys(envs || {}));
       return null;
     }
     
-    console.log('✅ Connection string retrieved:', connectionString.substring(0, 30) + '...[REDACTED]');
+    console.log('✅ External connection string retrieved:', connectionString.substring(0, 30) + '...[REDACTED]');
     
     const parsed = parsePostgresUrl(connectionString);
     
