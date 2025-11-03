@@ -348,6 +348,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
           <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-[#FF6B5B]/40 to-transparent mt-4 mb-4 rounded-full" />
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" onMouseEnter={() => setHovering(true)} onMouseLeave={() => setHovering(false)}>
+
 {/* Card 1: Memory Start Button + Active Connections + Current Plan */}
 <div className="relative p-6 rounded-2xl transition-all">
   {/* Memory Start Button - Top Center */}
@@ -371,26 +372,20 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
         <button
           onClick={handleMemorySetup}
           disabled={memoryButtonDisabled}
-          className="relative w-20 h-20 rounded-full bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-800 shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-110 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+          className="relative w-20 h-20 rounded-full bg-gradient-to-br from-slate-200/30 to-slate-300/30 dark:from-slate-700/30 dark:to-slate-800/30 backdrop-blur-sm border border-slate-300/40 dark:border-slate-600/40 shadow-lg shadow-slate-400/20 dark:shadow-slate-900/40 hover:shadow-2xl hover:shadow-slate-400/40 dark:hover:shadow-slate-900/60 transition-all duration-300 hover:scale-110 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
         >
-          {setupLoading ? (
-            <Loader2 className="h-8 w-8 animate-spin text-slate-600 dark:text-slate-300" />
-          ) : (
-            <Database className="h-8 w-8 text-slate-600 dark:text-slate-300" />
-          )}
-          
-          {/* Status Indicator */}
-          <div className={`absolute -top-1 -right-1 w-5 h-5 rounded-full border-2 border-white dark:border-slate-900 ${
+          {/* Status Indicator - Centered */}
+          <div className={`w-5 h-5 rounded-full ${
             setupLoading 
-              ? 'bg-yellow-500 shadow-[0_0_8px_rgba(234,179,8,0.5)]' 
-              : !memoriesStatus.projectReady 
-              ? 'bg-[#f97316] shadow-[0_0_8px_rgba(249,115,22,0.5)]'
-              : 'bg-[#f97316] shadow-[0_0_8px_rgba(249,115,22,0.5)]'
+              ? 'bg-yellow-500 shadow-[0_0_12px_rgba(234,179,8,0.6),0_0_20px_rgba(234,179,8,0.3)]' 
+              : 'bg-[#f97316] shadow-[0_0_12px_rgba(249,115,22,0.6),0_0_20px_rgba(249,115,22,0.3)]'
           }`}>
             {setupLoading && (
               <div className="absolute inset-0 rounded-full bg-yellow-500 animate-ping opacity-75" />
             )}
           </div>
+          {/* Glow effect */}
+          <div className="absolute inset-0 rounded-full bg-gradient-to-br from-slate-300/30 to-slate-400/30 dark:from-slate-600/30 dark:to-slate-700/30 blur-md -z-10" />
         </button>
         <span className="block text-center mt-2 text-xs font-medium text-slate-700 dark:text-slate-300">
           {setupLoading 

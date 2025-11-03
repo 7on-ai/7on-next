@@ -1,4 +1,4 @@
-// apps/app/app/api/memories/setup/route.ts
+// apps/app/app/api/memories/setup/route.ts - FIXED VERSION
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { database as db } from '@repo/database';
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
     if (!postgresConnection) {
       console.error('❌ Failed to get Postgres connection');
       return NextResponse.json(
-        { error: 'Failed to connect to Postgres database. Please enable External Access in Northflank addon settings.' },
+        { error: 'Failed to connect to Postgres database. Please try again in a moment.' },
         { status: 500 }
       );
     }
@@ -250,6 +250,7 @@ async function getPostgresConnection(projectId: string) {
       id: postgresAddon.id,
       name: postgresAddon.name,
       status: postgresAddon.status,
+      externalAccessEnabled: postgresAddon.spec?.externalAccessEnabled,
     });
     
     // Enable external access if not enabled
@@ -279,8 +280,8 @@ async function getPostgresConnection(projectId: string) {
           return null;
         }
         
-        console.log('✅ External access enabled, waiting 10 seconds for DNS propagation...');
-        await new Promise(resolve => setTimeout(resolve, 10000));
+        console.log('✅ External access enabled, waiting 15 seconds for DNS propagation...');
+        await new Promise(resolve => setTimeout(resolve, 15000));
       } catch (patchError) {
         console.error('❌ Error enabling external access:', patchError);
         return null;
@@ -341,15 +342,22 @@ async function getPostgresConnection(projectId: string) {
     const credentials = await credentialsResponse.json();
     const envs = credentials.data?.envs;
     
-    const connectionString = envs?.POSTGRES_EXTERNAL_URI || envs?.POSTGRES_URI_EXTERNAL;
+    console.log('Available envs:', Object.keys(envs || {}));
+    
+    // ✅ FIX: ใช้ชื่อ env variable ที่ถูกต้องตาม Northflank API
+    const connectionString = 
+      envs?.EXTERNAL_POSTGRES_URI || 
+      envs?.POSTGRES_EXTERNAL_URI || 
+      envs?.POSTGRES_URI_EXTERNAL ||
+      envs?.POSTGRES_URI;
     
     if (!connectionString) {
-      console.error('❌ No external connection string found');
-      console.log('Available envs:', Object.keys(envs || {}));
+      console.error('❌ No connection string found in any expected field');
+      console.log('All envs:', envs);
       return null;
     }
     
-    console.log('✅ External connection string retrieved:', connectionString.substring(0, 30) + '...[REDACTED]');
+    console.log('✅ Connection string retrieved:', connectionString.substring(0, 30) + '...[REDACTED]');
     
     const parsed = parsePostgresUrl(connectionString);
     
