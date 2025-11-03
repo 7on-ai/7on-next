@@ -1,5 +1,4 @@
-// apps/app/lib/n8n-credentials.ts
-
+// apps/app/lib/n8n-credentials.ts - WITH RETRY LOGIC
 interface PostgresConfig {
   host: string;
   port: number;
@@ -8,7 +7,7 @@ interface PostgresConfig {
   password: string;
 }
 
-interface CreateCredentialParams {
+interface CreatePostgresCredentialParams {
   n8nUrl: string;
   n8nEmail: string;
   n8nPassword: string;
@@ -16,141 +15,132 @@ interface CreateCredentialParams {
 }
 
 /**
- * Login to N8N and get session cookies
+ * Login to N8N and get session cookies with retry logic
  */
 async function loginToN8N(
   n8nUrl: string,
   email: string,
-  password: string
-): Promise<string | null> {
-  try {
-    console.log('🔐 Logging into N8N:', { url: n8nUrl, email });
-    
-    const response = await fetch(`${n8nUrl}/rest/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        emailOrLdapLoginId: email,
-        password,
-      }),
-    });
+  password: string,
+  maxRetries = 5,
+  retryDelay = 10000
+): Promise<string> {
+  console.log('🔐 Logging into N8N:', { url: n8nUrl, email });
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`Attempt ${attempt}/${maxRetries}...`);
+      
+      const response = await fetch(`${n8nUrl}/rest/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          emailOrLdapLoginId: email,
+          password,
+        }),
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ N8N login failed:', response.status, errorText);
-      return null;
+      if (response.status === 503) {
+        console.log(`⏳ N8N not ready yet (503), waiting ${retryDelay/1000}s before retry ${attempt}/${maxRetries}...`);
+        
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+          continue;
+        }
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ N8N login failed (${response.status}):`, errorText);
+        
+        if (attempt < maxRetries) {
+          console.log(`Retrying in ${retryDelay/1000}s...`);
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+          continue;
+        }
+        
+        throw new Error(`N8N login failed after ${maxRetries} attempts: ${response.status}`);
+      }
+
+      const cookies = response.headers.get('set-cookie');
+      if (!cookies) {
+        throw new Error('No cookies received from N8N login');
+      }
+
+      console.log('✅ N8N login successful');
+      return cookies;
+      
+    } catch (error) {
+      console.error(`❌ Attempt ${attempt} error:`, error);
+      
+      if (attempt < maxRetries) {
+        console.log(`Retrying in ${retryDelay/1000}s...`);
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+        continue;
+      }
+      
+      throw error;
     }
-
-    const cookies = response.headers.get('set-cookie');
-    if (!cookies) {
-      console.error('❌ No cookies received from N8N login');
-      return null;
-    }
-
-    console.log('✅ N8N login successful');
-    return cookies;
-  } catch (error) {
-    console.error('❌ N8N login error:', error);
-    return null;
   }
+  
+  throw new Error('Failed to get N8N session cookies');
 }
 
 /**
- * Create Postgres credential in N8N using cookies
+ * Create Postgres credential in N8N
  */
-export async function createPostgresCredentialInN8n(
-  params: CreateCredentialParams
-): Promise<string | null> {
+export async function createPostgresCredentialInN8n({
+  n8nUrl,
+  n8nEmail,
+  n8nPassword,
+  postgresConfig,
+}: CreatePostgresCredentialParams): Promise<string | null> {
   try {
     console.log('📝 Creating Postgres credential in N8N...');
     
-    // Step 1: Login to N8N
-    const cookies = await loginToN8N(
-      params.n8nUrl,
-      params.n8nEmail,
-      params.n8nPassword
-    );
-
-    if (!cookies) {
-      throw new Error('Failed to get N8N session cookies');
-    }
-
-    // Step 2: Create Postgres credential
-    const response = await fetch(`${params.n8nUrl}/rest/credentials`, {
+    const cookies = await loginToN8N(n8nUrl, n8nEmail, n8nPassword);
+    
+    console.log('📝 Creating credential via N8N API...');
+    
+    const credentialResponse = await fetch(`${n8nUrl}/rest/credentials`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Cookie: cookies,
       },
       body: JSON.stringify({
-        name: `User Postgres DB - ${new Date().toISOString().slice(0, 16)}`,
+        name: `User Postgres - ${new Date().toISOString().slice(0, 16)}`,
         type: 'postgres',
         data: {
-          host: params.postgresConfig.host,
-          port: params.postgresConfig.port,
-          database: params.postgresConfig.database,
-          user: params.postgresConfig.user,
-          password: params.postgresConfig.password,
+          host: postgresConfig.host,
+          port: postgresConfig.port,
+          database: postgresConfig.database,
+          user: postgresConfig.user,
+          password: postgresConfig.password,
+          ssl: 'allow',
           schema: 'user_data_schema',
-          ssl: { rejectUnauthorized: false },
-          connectionTimeout: 30000,
         },
       }),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ Failed to create Postgres credential:', errorText);
-      return null;
+    if (!credentialResponse.ok) {
+      const errorText = await credentialResponse.text();
+      console.error('❌ Failed to create credential:', errorText);
+      throw new Error(`Failed to create credential: ${credentialResponse.status}`);
     }
 
-    const result = await response.json();
-    const credentialId = result?.data?.id || result?.id;
-
+    const result = await credentialResponse.json();
+    const credentialId = result?.data?.id;
+    
     if (!credentialId) {
-      console.error('❌ No credential ID returned from N8N');
-      return null;
+      console.error('❌ No credential ID in response:', result);
+      throw new Error('No credential ID returned');
     }
-
+    
     console.log('✅ Postgres credential created:', credentialId);
     return credentialId;
+    
   } catch (error) {
     console.error('❌ Error creating Postgres credential:', error);
-    return null;
-  }
-}
-
-/**
- * Verify Postgres credential in N8N
- */
-export async function verifyPostgresCredential(
-  n8nUrl: string,
-  n8nEmail: string,
-  n8nPassword: string,
-  credentialId: string
-): Promise<boolean> {
-  try {
-    const cookies = await loginToN8N(n8nUrl, n8nEmail, n8nPassword);
-    if (!cookies) return false;
-
-    const response = await fetch(`${n8nUrl}/rest/credentials/${credentialId}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        Cookie: cookies,
-      },
-    });
-
-    if (!response.ok) {
-      console.error('❌ Failed to verify credential');
-      return false;
-    }
-
-    const credential = await response.json();
-    console.log('✅ Credential verified:', credential.data?.name);
-    return true;
-  } catch (error) {
-    console.error('❌ Error verifying credential:', error);
-    return false;
+    throw error;
   }
 }

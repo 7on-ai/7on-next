@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@repo/design-system/components/ui/card";
 import { Button } from "@repo/design-system/components/ui/button";
-import { Loader2, Database, AlertCircle, RefreshCw, Trash2 } from "lucide-react";
+import { Loader2, Database, AlertCircle, RefreshCw, Trash2, Clock } from "lucide-react";
 
 interface Memory {
   id: string;
@@ -86,15 +86,49 @@ export function MemoriesClient({
     }
   };
   
-  // Status: Not initialized
-  if (!isInitialized || !hasCredential) {
+  // Status: Schema initialized but no N8N credential yet
+  if (isInitialized && !hasCredential) {
+    return (
+      <div className="max-w-7xl mx-auto p-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="h-5 w-5 text-blue-500 animate-pulse" />
+              N8N Integration Setup in Progress
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <p className="text-muted-foreground">
+                ✅ Database schema created successfully!
+              </p>
+              <p className="text-muted-foreground">
+                ⏳ Waiting for N8N service to be ready... This can take 1-2 minutes as the service boots up.
+              </p>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                The setup will complete automatically once N8N is ready
+              </div>
+              <Button onClick={() => window.location.reload()} variant="outline">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Check Status
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+  
+  // Status: Not initialized at all
+  if (!isInitialized) {
     return (
       <div className="max-w-7xl mx-auto p-6">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <AlertCircle className="h-5 w-5 text-yellow-500" />
-              {projectStatus === 'ready' ? 'Database Setup in Progress' : 'Project Initialization'}
+              {projectStatus === 'ready' ? 'Database Setup Required' : 'Project Initialization'}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -108,14 +142,20 @@ export function MemoriesClient({
                     Please contact support if this persists.
                   </p>
                 </>
+              ) : projectStatus === 'ready' ? (
+                <>
+                  <p className="text-muted-foreground">
+                    Your database is ready to be initialized. Click "Setup Database" on the dashboard to begin.
+                  </p>
+                </>
               ) : (
                 <>
                   <p className="text-muted-foreground">
-                    Your Postgres database is being set up automatically. This usually takes 2-5 minutes.
+                    Your Northflank project is being created. This usually takes 2-5 minutes.
                   </p>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Setting up database schema and credentials...
+                    Project Status: {projectStatus || 'creating'}
                   </div>
                 </>
               )}
