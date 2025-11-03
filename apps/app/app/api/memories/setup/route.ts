@@ -1,3 +1,4 @@
+// apps/app/app/api/memories/setup/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { database as db } from '@repo/database';
@@ -89,7 +90,7 @@ export async function POST(request: NextRequest) {
     if (!postgresConnection) {
       console.error('❌ Failed to get Postgres connection');
       return NextResponse.json(
-        { error: 'Failed to connect to Postgres database' },
+        { error: 'Failed to connect to Postgres database. Please enable External Access in Northflank addon settings.' },
         { status: 500 }
       );
     }
@@ -249,12 +250,41 @@ async function getPostgresConnection(projectId: string) {
       id: postgresAddon.id,
       name: postgresAddon.name,
       status: postgresAddon.status,
-      externalAccessEnabled: postgresAddon.spec?.externalAccessEnabled,
     });
     
+    // Enable external access if not enabled
     if (!postgresAddon.spec?.externalAccessEnabled) {
-      console.error('❌ External access not enabled on addon');
-      return null;
+      console.log('⚠️ External access not enabled, enabling now...');
+      
+      try {
+        const patchResponse = await fetch(
+          `https://api.northflank.com/v1/projects/${projectId}/addons/${postgresAddon.id}`,
+          {
+            method: 'PATCH',
+            headers: {
+              Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              spec: {
+                externalAccessEnabled: true,
+              },
+            }),
+          }
+        );
+        
+        if (!patchResponse.ok) {
+          const errorText = await patchResponse.text();
+          console.error('❌ Failed to enable external access:', errorText);
+          return null;
+        }
+        
+        console.log('✅ External access enabled, waiting 10 seconds for DNS propagation...');
+        await new Promise(resolve => setTimeout(resolve, 10000));
+      } catch (patchError) {
+        console.error('❌ Error enabling external access:', patchError);
+        return null;
+      }
     }
     
     if (postgresAddon.status === 'paused') {
@@ -311,7 +341,7 @@ async function getPostgresConnection(projectId: string) {
     const credentials = await credentialsResponse.json();
     const envs = credentials.data?.envs;
     
-    const connectionString = envs?.POSTGRES_EXTERNAL_URI || envs?.POSTGRES_URI_EXTERNAL || envs?.POSTGRES_URI;
+    const connectionString = envs?.POSTGRES_EXTERNAL_URI || envs?.POSTGRES_URI_EXTERNAL;
     
     if (!connectionString) {
       console.error('❌ No external connection string found');

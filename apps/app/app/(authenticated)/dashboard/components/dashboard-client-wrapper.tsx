@@ -354,12 +354,13 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
   <div className="flex flex-col items-center mb-6">
     {memoryButtonReady ? (
       <Link href="/dashboard/memories" className="group">
-        <button className="relative w-20 h-20 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-110 flex items-center justify-center">
-          <Database className="h-8 w-8 text-white" />
-          {/* Status Indicator */}
-          <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-[#10b981] border-2 border-white dark:border-slate-900 shadow-[0_0_8px_rgba(16,185,129,0.5)]">
+        <button className="relative w-20 h-20 rounded-full bg-gradient-to-br from-purple-500/20 to-indigo-600/20 backdrop-blur-sm border border-purple-400/30 shadow-lg shadow-purple-500/20 hover:shadow-2xl hover:shadow-purple-500/40 transition-all duration-300 hover:scale-110 flex items-center justify-center">
+          {/* Status Indicator - Centered */}
+          <div className="w-5 h-5 rounded-full bg-[#10b981] shadow-[0_0_12px_rgba(16,185,129,0.6),0_0_20px_rgba(16,185,129,0.3)]">
             <div className="absolute inset-0 rounded-full bg-[#10b981] animate-ping opacity-75" />
           </div>
+          {/* Glow effect */}
+          <div className="absolute inset-0 rounded-full bg-gradient-to-br from-purple-500/30 to-indigo-600/30 blur-md -z-10" />
         </button>
         <span className="block text-center mt-2 text-xs font-medium text-slate-700 dark:text-slate-300">
           Memory Matrix
