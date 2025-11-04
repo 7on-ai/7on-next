@@ -1,4 +1,4 @@
-// apps/app/app/api/memories/setup/route.ts - FINAL FIX
+// apps/app/app/api/memories/setup/route.ts - SCHEMA INITIALIZATION
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { database as db } from '@repo/database';
@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     const { userId: clerkUserId } = await auth();
     
     if (!clerkUserId) {
-      console.error('❌ Unauthorized - no clerk user');
+      console.error('❌ Unauthorized');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
@@ -34,20 +34,18 @@ export async function POST(request: NextRequest) {
     });
     
     if (!user) {
-      console.error('❌ User not found in database');
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
     
     console.log('✅ User found:', {
-      id: user.id,
-      projectId: user.northflankProjectId,
       projectStatus: user.northflankProjectStatus,
       schemaInitialized: user.postgresSchemaInitialized,
       hasCredential: !!user.n8nPostgresCredentialId,
     });
     
+    // Already initialized
     if (user.postgresSchemaInitialized && user.n8nPostgresCredentialId) {
-      console.log('ℹ️ Database already initialized');
+      console.log('ℹ️ Already initialized');
       return NextResponse.json({
         success: true,
         message: 'Database already initialized',
@@ -55,87 +53,78 @@ export async function POST(request: NextRequest) {
       });
     }
     
+    // Validation
     if (!user.northflankProjectId) {
-      console.error('❌ No Northflank project');
       return NextResponse.json(
-        { error: 'No Northflank project found. Please wait for project creation.' },
+        { error: 'No Northflank project found' },
         { status: 400 }
       );
     }
     
     if (user.northflankProjectStatus !== 'ready') {
-      console.error('❌ Project not ready:', user.northflankProjectStatus);
       return NextResponse.json(
-        { error: `Project status: ${user.northflankProjectStatus}. Please wait for project to be ready.` },
+        { error: `Project not ready: ${user.northflankProjectStatus}` },
         { status: 400 }
       );
     }
     
     if (!user.n8nUrl || !user.n8nEncryptionKey) {
-      console.error('❌ Missing N8N config:', {
-        hasUrl: !!user.n8nUrl,
-        hasKey: !!user.n8nEncryptionKey,
-      });
       return NextResponse.json(
-        { error: 'N8N configuration is missing. Please contact support.' },
+        { error: 'N8N configuration missing' },
         { status: 400 }
       );
     }
     
     console.log('✅ Prerequisites validated');
     
+    // Get Postgres connection
     console.log('📝 Getting Postgres connection...');
     const postgresConnection = await getPostgresConnection(user.northflankProjectId);
     
     if (!postgresConnection) {
-      console.error('❌ Failed to get Postgres connection');
       return NextResponse.json(
-        { error: 'Failed to connect to Postgres database. Please try again in a moment.' },
+        { error: 'Failed to connect to Postgres' },
         { status: 500 }
       );
     }
     
     console.log('✅ Postgres connection retrieved');
-    console.log('Connection types:', {
-      hasRegular: !!postgresConnection.connectionString,
-      hasAdmin: !!postgresConnection.adminConnectionString,
-      willUseAdmin: postgresConnection.adminConnectionString !== postgresConnection.connectionString,
-    });
     
-    console.log('📝 Initializing schema with admin credentials...');
+    // Initialize schema
+    console.log('📝 Initializing schema...');
     
     try {
       const { initializeUserPostgresSchema } = await import('@/lib/postgres-setup');
       
-      // ✅ CRITICAL: Pass admin connection string as SECOND parameter
       const schemaSuccess = await initializeUserPostgresSchema(
-        postgresConnection.connectionString,      // Regular user connection
-        postgresConnection.adminConnectionString  // Admin connection for schema creation
+        postgresConnection.connectionString,
+        postgresConnection.adminConnectionString
       );
       
       if (!schemaSuccess) {
-        throw new Error('Schema initialization returned false');
+        throw new Error('Schema initialization failed');
       }
       
-      console.log('✅ Schema initialized successfully');
+      console.log('✅ Schema initialized');
     } catch (schemaError) {
-      console.error('❌ Schema initialization failed:', schemaError);
+      console.error('❌ Schema error:', schemaError);
       
       await db.user.update({
         where: { id: user.id },
         data: {
-          postgresSetupError: `Schema init failed: ${(schemaError as Error).message}`,
+          postgresSetupError: `Schema: ${(schemaError as Error).message}`,
           updatedAt: new Date(),
         },
       });
       
       return NextResponse.json(
-        { error: 'Failed to initialize database schema', details: (schemaError as Error).message },
+        { error: 'Schema initialization failed', details: (schemaError as Error).message },
         { status: 500 }
       );
     }
     
-    console.log('📝 Creating N8N credential with regular user...');
+    // Create N8N credential
+    console.log('📝 Creating N8N credential...');
     
     try {
       const { createPostgresCredentialInN8n } = await import('@/lib/n8n-credentials');
@@ -143,13 +132,10 @@ export async function POST(request: NextRequest) {
       const n8nEmail = user.n8nUserEmail || user.email;
       const n8nPassword = `7On${user.n8nEncryptionKey}`;
       
-      console.log('N8N config:', {
-        url: user.n8nUrl,
-        email: n8nEmail,
-        hasPassword: !!n8nPassword,
-      });
+      if (!postgresConnection.config) {
+        throw new Error('Missing Postgres config');
+      }
       
-      // ✅ Use regular user credentials for N8N (not admin)
       const credentialId = await createPostgresCredentialInN8n({
         n8nUrl: user.n8nUrl,
         n8nEmail,
@@ -158,11 +144,12 @@ export async function POST(request: NextRequest) {
       });
       
       if (!credentialId) {
-        throw new Error('Credential creation returned null');
+        throw new Error('No credential ID returned');
       }
       
       console.log('✅ N8N credential created:', credentialId);
       
+      // Update database
       await db.user.update({
         where: { id: user.id },
         data: {
@@ -174,42 +161,38 @@ export async function POST(request: NextRequest) {
         },
       });
       
-      console.log('✅ Setup completed successfully');
+      console.log('✅ Setup completed');
       
       return NextResponse.json({
         success: true,
-        message: 'Database setup completed successfully',
+        message: 'Database setup completed',
         credentialId,
       });
       
     } catch (credError) {
-      console.error('❌ N8N credential creation failed:', credError);
+      console.error('❌ Credential error:', credError);
       
       await db.user.update({
         where: { id: user.id },
         data: {
           postgresSchemaInitialized: true,
-          postgresSetupError: `Credential creation failed: ${(credError as Error).message}`,
+          postgresSetupError: `Credential: ${(credError as Error).message}`,
           updatedAt: new Date(),
         },
       });
       
       return NextResponse.json(
-        { 
-          error: 'Schema created but credential creation failed', 
-          details: (credError as Error).message 
-        },
+        { error: 'Credential creation failed', details: (credError as Error).message },
         { status: 500 }
       );
     }
     
   } catch (error) {
-    console.error('💥 Unexpected error in setup:', error);
+    console.error('💥 Unexpected error:', error);
     return NextResponse.json(
       { 
-        error: 'Unexpected error during setup', 
+        error: 'Unexpected error', 
         details: (error as Error).message,
-        stack: process.env.NODE_ENV === 'development' ? (error as Error).stack : undefined,
       },
       { status: 500 }
     );
@@ -218,8 +201,6 @@ export async function POST(request: NextRequest) {
 
 async function getPostgresConnection(projectId: string) {
   try {
-    console.log('📝 Getting Postgres connection from Northflank Addons API...');
-    
     const addonsResponse = await fetch(
       `https://api.northflank.com/v1/projects/${projectId}/addons`,
       {
@@ -230,101 +211,48 @@ async function getPostgresConnection(projectId: string) {
       }
     );
     
-    if (!addonsResponse.ok) {
-      const errorText = await addonsResponse.text();
-      console.error('❌ Failed to list addons:', addonsResponse.status, errorText);
-      return null;
-    }
+    if (!addonsResponse.ok) return null;
     
     const addonsData = await addonsResponse.json();
-    console.log('📦 Found', addonsData.data?.addons?.length || 0, 'addons');
-    
     const addons = addonsData.data?.addons || [];
-    const postgresAddon = addons.find(
-      (addon: any) => addon.spec?.type === 'postgresql'
-    );
+    const postgresAddon = addons.find((a: any) => a.spec?.type === 'postgresql');
     
-    if (!postgresAddon) {
-      console.error('❌ No PostgreSQL addon found in project');
-      return null;
-    }
+    if (!postgresAddon) return null;
     
-    console.log('✅ PostgreSQL addon found:', {
-      id: postgresAddon.id,
-      name: postgresAddon.name,
-      status: postgresAddon.status,
-      externalAccessEnabled: postgresAddon.spec?.externalAccessEnabled,
-    });
-    
-    // Enable external access if not enabled
+    // Enable external access if needed
     if (!postgresAddon.spec?.externalAccessEnabled) {
-      console.log('⚠️ External access not enabled, enabling now...');
-      
-      try {
-        const patchResponse = await fetch(
-          `https://api.northflank.com/v1/projects/${projectId}/addons/${postgresAddon.id}`,
-          {
-            method: 'PATCH',
-            headers: {
-              Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              spec: {
-                externalAccessEnabled: true,
-              },
-            }),
-          }
-        );
-        
-        if (!patchResponse.ok) {
-          const errorText = await patchResponse.text();
-          console.error('❌ Failed to enable external access:', errorText);
-          return null;
+      await fetch(
+        `https://api.northflank.com/v1/projects/${projectId}/addons/${postgresAddon.id}`,
+        {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ spec: { externalAccessEnabled: true } }),
         }
-        
-        console.log('✅ External access enabled, waiting 15 seconds for DNS propagation...');
-        await new Promise(resolve => setTimeout(resolve, 15000));
-      } catch (patchError) {
-        console.error('❌ Error enabling external access:', patchError);
-        return null;
-      }
+      );
+      
+      await new Promise(resolve => setTimeout(resolve, 15000));
     }
     
+    // Resume if paused
     if (postgresAddon.status === 'paused') {
-      console.log('⏸️ PostgreSQL addon is paused, attempting to resume...');
-      
-      try {
-        const resumeResponse = await fetch(
-          `https://api.northflank.com/v1/projects/${projectId}/addons/${postgresAddon.id}/resume`,
-          {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
-              'Content-Type': 'application/json',
-            },
-          }
-        );
-        
-        if (resumeResponse.ok) {
-          console.log('✅ PostgreSQL addon resume initiated');
-          console.log('⏳ Waiting 30 seconds for database to start...');
-          await new Promise(resolve => setTimeout(resolve, 30000));
-        } else {
-          const errorText = await resumeResponse.text();
-          console.error('❌ Failed to resume addon:', resumeResponse.status, errorText);
-          return null;
+      await fetch(
+        `https://api.northflank.com/v1/projects/${projectId}/addons/${postgresAddon.id}/resume`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
         }
-      } catch (resumeError) {
-        console.error('💥 Error resuming addon:', resumeError);
-        return null;
-      }
-    } else if (postgresAddon.status !== 'running') {
-      console.error('❌ PostgreSQL addon is not running:', postgresAddon.status);
-      return null;
+      );
+      
+      await new Promise(resolve => setTimeout(resolve, 30000));
     }
     
-    console.log('📝 Getting PostgreSQL addon credentials...');
+    if (postgresAddon.status !== 'running') return null;
     
     const credentialsResponse = await fetch(
       `https://api.northflank.com/v1/projects/${projectId}/addons/${postgresAddon.id}/credentials`,
@@ -336,43 +264,18 @@ async function getPostgresConnection(projectId: string) {
       }
     );
     
-    if (!credentialsResponse.ok) {
-      const errorText = await credentialsResponse.text();
-      console.error('❌ Failed to get addon credentials:', credentialsResponse.status, errorText);
-      return null;
-    }
+    if (!credentialsResponse.ok) return null;
     
     const credentials = await credentialsResponse.json();
     const envs = credentials.data?.envs;
     
-    console.log('Available envs:', Object.keys(envs || {}));
+    const adminConnectionString = envs?.EXTERNAL_POSTGRES_URI_ADMIN || envs?.POSTGRES_URI_ADMIN;
+    const connectionString = envs?.EXTERNAL_POSTGRES_URI || envs?.POSTGRES_URI;
     
-    // ✅ Get both admin and regular connection strings
-    const adminConnectionString = 
-      envs?.EXTERNAL_POSTGRES_URI_ADMIN || 
-      envs?.POSTGRES_URI_ADMIN;
-    
-    const connectionString = 
-      envs?.EXTERNAL_POSTGRES_URI || 
-      envs?.POSTGRES_URI;
-    
-    if (!connectionString) {
-      console.error('❌ No connection string found');
-      return null;
-    }
-    
-    if (!adminConnectionString) {
-      console.warn('⚠️ No admin connection string found, will use regular credentials');
-    } else {
-      console.log('✅ Both regular and admin connection strings retrieved');
-    }
+    if (!connectionString) return null;
     
     const parsed = parsePostgresUrl(connectionString);
-    
-    if (!parsed) {
-      console.error('❌ Failed to parse connection string');
-      return null;
-    }
+    if (!parsed) return null;
     
     return {
       connectionString,
@@ -381,11 +284,7 @@ async function getPostgresConnection(projectId: string) {
     };
     
   } catch (error) {
-    console.error('💥 Error getting Postgres connection:', error);
-    if (error instanceof Error) {
-      console.error('Error message:', error.message);
-      console.error('Error stack:', error.stack);
-    }
+    console.error('Error getting connection:', error);
     return null;
   }
 }
@@ -394,23 +293,12 @@ function parsePostgresUrl(url: string) {
   try {
     const regex = /postgresql:\/\/([^:]+):([^@]+)@([^:]+):(\d+)\/([^?]+)/;
     const match = url.match(regex);
-    
-    if (!match) {
-      console.warn('⚠️ Could not parse connection string');
-      return null;
-    }
+    if (!match) return null;
     
     const [, user, password, host, port, database] = match;
     
-    return {
-      host,
-      port: parseInt(port, 10),
-      database,
-      user,
-      password,
-    };
-  } catch (error) {
-    console.error('❌ Error parsing URL:', error);
+    return { host, port: parseInt(port), database, user, password };
+  } catch {
     return null;
   }
 }
