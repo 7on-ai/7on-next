@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@repo/design-system/components/ui/button";
-import { Github, Linkedin, Sparkles, Loader2, Check, Database } from "lucide-react";
+import { Github, Linkedin, Sparkles, Loader2, Check, Database, AlertCircle } from "lucide-react";
 import { useSubscription } from "@repo/auth/hooks/use-subscription";
 import type { SubscriptionTier } from "@repo/auth/client";
 import { GL } from "@/components/gl";
@@ -121,10 +121,14 @@ interface DashboardClientProps {
   initialTier: SubscriptionTier;
 }
 
-type ConnectionState = 'connected' | 'disconnected';
+type ConnectionState = 'connected' | 'disconnected' | 'verifying';
 
 interface ConnectionStatus {
   [key: string]: ConnectionState;
+}
+
+interface ConnectionError {
+  [key: string]: string | null;
 }
 
 interface MemoriesStatus {
@@ -134,14 +138,36 @@ interface MemoriesStatus {
 }
 
 /* ----------------------- Connection Status Indicator ---------------------- */
-const ConnectionStatusIndicator = ({ status }: { status: ConnectionState }) => {
+const ConnectionStatusIndicator = ({ 
+  status, 
+  error 
+}: { 
+  status: ConnectionState;
+  error?: string | null;
+}) => {
   const isConnected = status === 'connected';
+  const isVerifying = status === 'verifying';
+  const hasError = !!error;
   
   return (
-    <div className="flex items-center justify-center">
-      <div className={`relative w-2.5 h-2.5 rounded-full opacity-70 ${isConnected ? 'bg-[#10b981] shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-[#f97316] shadow-[0_0_8px_rgba(249,115,22,0.5)]'}`}>
-        {isConnected && <div className="absolute inset-0 rounded-full bg-[#10b981] animate-ping opacity-75" />}
+    <div className="flex items-center justify-center gap-2">
+      <div className={`relative w-2.5 h-2.5 rounded-full ${
+        isVerifying 
+          ? 'bg-yellow-500 shadow-[0_0_8px_rgba(234,179,8,0.5)]' 
+          : isConnected && !hasError
+          ? 'bg-[#10b981] shadow-[0_0_8px_rgba(16,185,129,0.5)]' 
+          : 'bg-[#f97316] shadow-[0_0_8px_rgba(249,115,22,0.5)]'
+      }`}>
+        {isVerifying && (
+          <div className="absolute inset-0 rounded-full bg-yellow-500 animate-ping opacity-75" />
+        )}
+        {isConnected && !hasError && (
+          <div className="absolute inset-0 rounded-full bg-[#10b981] animate-ping opacity-75" />
+        )}
       </div>
+      {hasError && (
+        <AlertCircle className="h-3 w-3 text-orange-500" title={error} />
+      )}
     </div>
   );
 };
@@ -159,12 +185,17 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
   const [loadingConnect, setLoadingConnect] = useState<string | null>(null);
   const [hovering, setHovering] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({});
+  const [connectionErrors, setConnectionErrors] = useState<ConnectionError>({});
   const [memoriesStatus, setMemoriesStatus] = useState<MemoriesStatus>({
     isInitialized: false,
     hasCredential: false,
     projectReady: false,
   });
   const [setupLoading, setSetupLoading] = useState(false);
+
+  // ✅ Use ref to prevent double verification
+  const verificationTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const hasVerifiedRef = useRef<Set<string>>(new Set());
 
   const services = [
     { service: "google" as const, label: "Google", icon: <GoogleIcon /> },
@@ -199,18 +230,29 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
       if (response.ok) {
         const credentials = await response.json();
         const statusMap: ConnectionStatus = {};
+        const errorMap: ConnectionError = {};
+        
         credentials.forEach((cred: any) => {
           const normalizedProvider = cred.provider.toLowerCase().replace('google-oauth2', 'google');
+          
           if (cred.injectedToN8n && !cred.injectionError) {
             statusMap[normalizedProvider] = 'connected';
+            errorMap[normalizedProvider] = null;
           } else {
             statusMap[normalizedProvider] = 'disconnected';
+            errorMap[normalizedProvider] = cred.injectionError || null;
           }
         });
+        
         services.forEach(({ service }) => {
-          if (!statusMap[service]) statusMap[service] = 'disconnected';
+          if (!statusMap[service]) {
+            statusMap[service] = 'disconnected';
+            errorMap[service] = null;
+          }
         });
+        
         setConnectionStatus(statusMap);
+        setConnectionErrors(errorMap);
       }
     } catch (e) {
       console.error("Error fetching connection status:", e);
@@ -225,7 +267,6 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
         const data = await response.json();
         setStats({ activeConnections: data.injected_providers_count || 0 });
         
-        // Update memories status
         setMemoriesStatus({
           isInitialized: data.postgres_schema_initialized || false,
           hasCredential: !!data.n8n_postgres_credential_id,
@@ -237,22 +278,13 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
     }
   }, [userId]);
 
-  // ✅ FIX: Fetch only on mount and when needed
+  // ✅ Initial load
   useEffect(() => {
     fetchStats();
     fetchConnectionStatus();
   }, [fetchStats, fetchConnectionStatus]);
 
-  // ✅ REMOVED: Automatic polling every 60 seconds
-  // useEffect(() => {
-  //   const interval = setInterval(() => {
-  //     fetchStats();
-  //     fetchConnectionStatus();
-  //   }, POLLING_INTERVAL);
-  //   return () => clearInterval(interval);
-  // }, [fetchStats, fetchConnectionStatus]);
-
-  // ✅ FIX: Only fetch when tab becomes visible (user returns)
+  // ✅ Refresh when tab becomes visible
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
@@ -264,23 +296,94 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [fetchStats, fetchConnectionStatus]);
 
+  // ✅ SMART VERIFICATION after OAuth redirect
   useEffect(() => {
     const connected = searchParams.get("connected");
     const status = searchParams.get("status");
     const error = searchParams.get("error");
 
     if (connected && status === "success") {
-      showToast(`✅ Successfully connected ${connected}!`);
+      // Clear URL params immediately
       clearUrlParams(["connected", "status", "timestamp"]);
-      // ✅ FIX: Fetch after successful connection
-      fetchStats();
-      fetchConnectionStatus();
+      
+      // ✅ OPTIMISTIC UPDATE - แสดงสีเหลือง (verifying) ทันที
+      setConnectionStatus(prev => ({ 
+        ...prev, 
+        [connected]: 'verifying' 
+      }));
+      
+      showToast(`🔄 Connecting ${connected}...`);
+      
+      // ✅ SMART VERIFICATION - verify หลัง 3 วินาที
+      if (!hasVerifiedRef.current.has(connected)) {
+        hasVerifiedRef.current.add(connected);
+        
+        verificationTimerRef.current = setTimeout(async () => {
+          console.log(`🔍 Verifying ${connected} connection...`);
+          
+          try {
+            await fetchStats();
+            await fetchConnectionStatus();
+            
+            // Check if connection is successful
+            const response = await fetch(`/api/user/social-credentials?userId=${userId}`);
+            if (response.ok) {
+              const credentials = await response.json();
+              const normalizedProvider = connected.toLowerCase().replace('google-oauth2', 'google');
+              const credential = credentials.find((c: any) => 
+                c.provider.toLowerCase().replace('google-oauth2', 'google') === normalizedProvider
+              );
+              
+              if (credential?.injectedToN8n && !credential?.injectionError) {
+                showToast(`✅ Successfully connected ${connected}!`);
+                setConnectionStatus(prev => ({ 
+                  ...prev, 
+                  [connected]: 'connected' 
+                }));
+                setConnectionErrors(prev => ({
+                  ...prev,
+                  [connected]: null
+                }));
+              } else {
+                const errorMsg = credential?.injectionError || 'Connection verification failed';
+                showToast(`⚠️ ${connected} connection incomplete: ${errorMsg}`);
+                setConnectionStatus(prev => ({ 
+                  ...prev, 
+                  [connected]: 'disconnected' 
+                }));
+                setConnectionErrors(prev => ({
+                  ...prev,
+                  [connected]: errorMsg
+                }));
+              }
+            }
+          } catch (err) {
+            console.error('Verification error:', err);
+            showToast(`⚠️ Failed to verify ${connected} connection`);
+            setConnectionStatus(prev => ({ 
+              ...prev, 
+              [connected]: 'disconnected' 
+            }));
+          } finally {
+            // Remove from verification set after delay
+            setTimeout(() => {
+              hasVerifiedRef.current.delete(connected);
+            }, 60000); // Allow re-verification after 1 minute
+          }
+        }, 3000); // Wait 3 seconds for backend to process
+      }
     } else if (error) {
       showToast(`❌ Connection failed: ${decodeURIComponent(error)}`);
       clearUrlParams(["error", "timestamp"]);
       fetchConnectionStatus();
     }
-  }, [searchParams?.toString(), fetchStats, fetchConnectionStatus]);
+
+    return () => {
+      if (verificationTimerRef.current) {
+        clearTimeout(verificationTimerRef.current);
+      }
+    };
+  }, [searchParams?.toString(), userId, fetchStats, fetchConnectionStatus]);
 
   const handleConnect = async (service: keyof typeof CLIENT_IDS, isLocked: boolean) => {
     if (!userId) {
@@ -320,7 +423,6 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
       
       if (response.ok) {
         showToast('✅ Database setup completed!');
-        // ✅ FIX: Refresh status after setup
         await fetchStats();
       } else {
         showToast(`❌ Setup failed: ${data.error}`);
@@ -349,69 +451,63 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" onMouseEnter={() => setHovering(true)} onMouseLeave={() => setHovering(false)}>
 
-{/* Card 1: Memory Start Button + Active Connections + Current Plan */}
-<div className="relative p-6 rounded-2xl transition-all mt-4 md:mt-10">
-  {/* Memory Start Button - Top Center */}
-  <div className="flex flex-col items-center mb-6">
-    {memoryButtonReady ? (
-      <Link href="/dashboard/memories" className="group">
-        <button className="relative w-20 h-20 rounded-full bg-gradient-to-br from-purple-500/20 to-indigo-600/20 backdrop-blur-sm border border-purple-400/30 shadow-lg shadow-purple-500/20 hover:shadow-2xl hover:shadow-purple-500/40 transition-all duration-300 hover:scale-110 flex items-center justify-center">
-          {/* Status Indicator - Centered */}
-          <div className="w-5 h-5 rounded-full bg-[#10b981] shadow-[0_0_12px_rgba(16,185,129,0.6),0_0_20px_rgba(16,185,129,0.3)]">
-            <div className="absolute inset-0 rounded-full bg-[#10b981] animate-ping opacity-75" />
-          </div>
-          {/* Glow effect */}
-          <div className="absolute inset-0 rounded-full bg-gradient-to-br from-purple-500/30 to-indigo-600/30 blur-md -z-10" />
-        </button>
-        <span className="block text-center mt-2 text-xs font-medium text-slate-700 dark:text-slate-300">
-          Memory Matrix
-        </span>
-      </Link>
-    ) : (
-      <div className="flex flex-col items-center">
-        <button
-          onClick={handleMemorySetup}
-          disabled={memoryButtonDisabled}
-          className="relative w-20 h-20 rounded-full bg-gradient-to-br from-slate-200/30 to-slate-300/30 dark:from-slate-700/30 dark:to-slate-800/30 backdrop-blur-sm border border-slate-300/40 dark:border-slate-600/40 shadow-lg shadow-slate-400/20 dark:shadow-slate-900/40 hover:shadow-2xl hover:shadow-slate-400/40 dark:hover:shadow-slate-900/60 transition-all duration-300 hover:scale-110 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-        >
-          {/* Status Indicator - Centered */}
-          <div className={`w-5 h-5 rounded-full ${
-            setupLoading 
-              ? 'bg-yellow-500 shadow-[0_0_12px_rgba(234,179,8,0.6),0_0_20px_rgba(234,179,8,0.3)]' 
-              : 'bg-[#f97316] shadow-[0_0_12px_rgba(249,115,22,0.6),0_0_20px_rgba(249,115,22,0.3)]'
-          }`}>
-            {setupLoading && (
-              <div className="absolute inset-0 rounded-full bg-yellow-500 animate-ping opacity-75" />
-            )}
-          </div>
-          {/* Glow effect */}
-          <div className="absolute inset-0 rounded-full bg-gradient-to-br from-slate-300/30 to-slate-400/30 dark:from-slate-600/30 dark:to-slate-700/30 blur-md -z-10" />
-        </button>
-        <span className="block text-center mt-2 text-xs font-medium text-slate-700 dark:text-slate-300">
-          {setupLoading 
-            ? 'Setting up...' 
-            : !memoriesStatus.projectReady 
-            ? 'Initializing...' 
-            : 'Start'}
-        </span>
-      </div>
-    )}
-  </div>
+            {/* Card 1: Memory Start Button + Active Connections + Current Plan */}
+            <div className="relative p-6 rounded-2xl transition-all mt-4 md:mt-10">
+              <div className="flex flex-col items-center mb-6">
+                {memoryButtonReady ? (
+                  <Link href="/dashboard/memories" className="group">
+                    <button className="relative w-20 h-20 rounded-full bg-gradient-to-br from-purple-500/20 to-indigo-600/20 backdrop-blur-sm border border-purple-400/30 shadow-lg shadow-purple-500/20 hover:shadow-2xl hover:shadow-purple-500/40 transition-all duration-300 hover:scale-110 flex items-center justify-center">
+                      <div className="w-5 h-5 rounded-full bg-[#10b981] shadow-[0_0_12px_rgba(16,185,129,0.6),0_0_20px_rgba(16,185,129,0.3)]">
+                        <div className="absolute inset-0 rounded-full bg-[#10b981] animate-ping opacity-75" />
+                      </div>
+                      <div className="absolute inset-0 rounded-full bg-gradient-to-br from-purple-500/30 to-indigo-600/30 blur-md -z-10" />
+                    </button>
+                    <span className="block text-center mt-2 text-xs font-medium text-slate-700 dark:text-slate-300">
+                      Memory Matrix
+                    </span>
+                  </Link>
+                ) : (
+                  <div className="flex flex-col items-center">
+                    <button
+                      onClick={handleMemorySetup}
+                      disabled={memoryButtonDisabled}
+                      className="relative w-20 h-20 rounded-full bg-gradient-to-br from-slate-200/30 to-slate-300/30 dark:from-slate-700/30 dark:to-slate-800/30 backdrop-blur-sm border border-slate-300/40 dark:border-slate-600/40 shadow-lg shadow-slate-400/20 dark:shadow-slate-900/40 hover:shadow-2xl hover:shadow-slate-400/40 dark:hover:shadow-slate-900/60 transition-all duration-300 hover:scale-110 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                    >
+                      <div className={`w-5 h-5 rounded-full ${
+                        setupLoading 
+                          ? 'bg-yellow-500 shadow-[0_0_12px_rgba(234,179,8,0.6),0_0_20px_rgba(234,179,8,0.3)]' 
+                          : 'bg-[#f97316] shadow-[0_0_12px_rgba(249,115,22,0.6),0_0_20px_rgba(249,115,22,0.3)]'
+                      }`}>
+                        {setupLoading && (
+                          <div className="absolute inset-0 rounded-full bg-yellow-500 animate-ping opacity-75" />
+                        )}
+                      </div>
+                      <div className="absolute inset-0 rounded-full bg-gradient-to-br from-slate-300/30 to-slate-400/30 dark:from-slate-600/30 dark:to-slate-700/30 blur-md -z-10" />
+                    </button>
+                    <span className="block text-center mt-2 text-xs font-medium text-slate-700 dark:text-slate-300">
+                      {setupLoading 
+                        ? 'Setting up...' 
+                        : !memoriesStatus.projectReady 
+                        ? 'Initializing...' 
+                        : 'Start'}
+                    </span>
+                  </div>
+                )}
+              </div>
 
-  <div className="w-full h-px bg-slate-200/40 dark:bg-slate-700/40 mb-4" />
+              <div className="w-full h-px bg-slate-200/40 dark:bg-slate-700/40 mb-4" />
 
-  {/* Stats Grid */}
-  <div className="grid grid-cols-2 gap-4">
-    <div className="text-center">
-      <div className="text-xs text-slate-600 dark:text-slate-400 mb-1">Connections</div>
-      <div className="text-2xl font-bold text-slate-900 dark:text-white">{stats.activeConnections}</div>
-    </div>
-    <div className="text-center">
-      <div className="text-xs text-slate-600 dark:text-slate-400 mb-1">Plan</div>
-      <div className="text-2xl font-bold text-slate-900 dark:text-white">{currentTier}</div>
-    </div>
-  </div>
-</div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="text-center">
+                  <div className="text-xs text-slate-600 dark:text-slate-400 mb-1">Connections</div>
+                  <div className="text-2xl font-bold text-slate-900 dark:text-white">{stats.activeConnections}</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-xs text-slate-600 dark:text-slate-400 mb-1">Plan</div>
+                  <div className="text-2xl font-bold text-slate-900 dark:text-white">{currentTier}</div>
+                </div>
+              </div>
+            </div>
 
             {/* Card 2: Available Integrations */}
             <div className="p-6 rounded-2xl bg-white/30 dark:bg-white/10 border border-white/30 dark:border-white/10 shadow-[0_8px_32px_rgba(2,6,23,0.08)] transition-all hover:bg-white/40 dark:hover:bg-white/8">
@@ -421,30 +517,36 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
                 {availableServices.map(({ service, label, icon }) => {
                   const loading = loadingConnect === service;
                   const status = connectionStatus[service] || 'disconnected';
+                  const error = connectionErrors[service];
                   const isConnected = status === 'connected';
+                  const isVerifying = status === 'verifying';
                   
                   return (
                     <button
                       aria-label={`Connect ${label}`}
                       key={service}
                       onClick={() => {
-                        if (!isConnected) {
+                        if (!isConnected && !isVerifying) {
                           handleConnect(service, false);
                           showToast(`Connecting to ${label}...`);
                         }
                       }}
-                      disabled={loading}
+                      disabled={loading || isVerifying}
                       className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl transition transform hover:scale-[1.01] hover:shadow-lg border border-slate-200/40 dark:border-slate-700/30 bg-white/30 dark:bg-white/5 backdrop-blur-sm disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <div className="flex items-center gap-3">
                         <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-white/30 dark:bg-white/5">{icon}</div>
                         <div className="text-sm font-medium text-slate-800 dark:text-slate-100">
-                          {isConnected ? `${label} Connected` : `Connect ${label}`}
+                          {isConnected ? `${label} Connected` : isVerifying ? `${label} Verifying...` : `Connect ${label}`}
                         </div>
                       </div>
 
                       <div className="flex items-center gap-3">
-                        {loading ? <Loader2 className="h-4 w-4 animate-spin text-slate-600 dark:text-slate-300" /> : <ConnectionStatusIndicator status={status} />}
+                        {loading ? (
+                          <Loader2 className="h-4 w-4 animate-spin text-slate-600 dark:text-slate-300" />
+                        ) : (
+                          <ConnectionStatusIndicator status={status} error={error} />
+                        )}
                       </div>
                     </button>
                   );
