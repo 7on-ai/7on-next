@@ -137,6 +137,16 @@ interface MemoriesStatus {
   projectReady: boolean;
 }
 
+interface DisconnectingState {
+  [key: string]: boolean;
+}
+
+interface ConfirmDialogState {
+  isOpen: boolean;
+  service: string | null;
+  label: string | null;
+}
+
 /* ----------------------- Connection Status Indicator ---------------------- */
 const ConnectionStatusIndicator = ({ 
   status, 
@@ -195,7 +205,14 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
   });
   const [setupLoading, setSetupLoading] = useState(false);
 
-  // ✅ Use ref to prevent double verification
+  // 🆕 States สำหรับ disconnect
+  const [disconnecting, setDisconnecting] = useState<DisconnectingState>({});
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState>({
+    isOpen: false,
+    service: null,
+    label: null,
+  });
+
   const verificationTimerRef = useRef<NodeJS.Timeout | null>(null);
   const hasVerifiedRef = useRef<Set<string>>(new Set());
 
@@ -280,13 +297,65 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
     }
   }, [userId]);
 
-  // ✅ Initial load
+  // 🆕 ฟังก์ชัน handleDisconnect
+  const handleDisconnect = async (service: string, label: string) => {
+    if (!userId) {
+      showToast("⚠️ You must be signed in.");
+      return;
+    }
+
+    setDisconnecting(prev => ({ ...prev, [service]: true }));
+    setConfirmDialog({ isOpen: false, service: null, label: null });
+
+    try {
+      const response = await fetch(
+        `/api/user/social-credentials/disconnect?provider=${service}`,
+        { method: 'DELETE' }
+      );
+
+      const data = await response.json();
+
+      if (response.ok) {
+        showToast(`✅ Successfully disconnected ${label}!`);
+        
+        // Update UI immediately
+        setConnectionStatus(prev => ({
+          ...prev,
+          [service]: 'disconnected'
+        }));
+        setConnectionErrors(prev => ({
+          ...prev,
+          [service]: null
+        }));
+
+        // Refresh data
+        await fetchStats();
+        await fetchConnectionStatus();
+      } else {
+        showToast(`❌ Failed to disconnect: ${data.message || data.error}`);
+      }
+    } catch (error) {
+      console.error('Disconnect error:', error);
+      showToast('❌ Failed to disconnect. Please try again.');
+    } finally {
+      setDisconnecting(prev => ({ ...prev, [service]: false }));
+    }
+  };
+
+  // 🆕 ฟังก์ชันเปิด confirmation dialog
+  const openDisconnectDialog = (service: string, label: string) => {
+    setConfirmDialog({
+      isOpen: true,
+      service,
+      label,
+    });
+  };
+
   useEffect(() => {
     fetchStats();
     fetchConnectionStatus();
   }, [fetchStats, fetchConnectionStatus]);
 
-  // ✅ Refresh when tab becomes visible
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
@@ -298,17 +367,14 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [fetchStats, fetchConnectionStatus]);
 
-  // ✅ SMART VERIFICATION after OAuth redirect
   useEffect(() => {
     const connected = searchParams.get("connected");
     const status = searchParams.get("status");
     const error = searchParams.get("error");
 
     if (connected && status === "success") {
-      // Clear URL params immediately
       clearUrlParams(["connected", "status", "timestamp"]);
       
-      // ✅ OPTIMISTIC UPDATE - แสดงสีเหลือง (verifying) ทันที
       setConnectionStatus(prev => ({ 
         ...prev, 
         [connected]: 'verifying' 
@@ -316,7 +382,6 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
       
       showToast(`🔄 Connecting ${connected}...`);
       
-      // ✅ SMART VERIFICATION - verify หลัง 3 วินาที
       if (!hasVerifiedRef.current.has(connected)) {
         hasVerifiedRef.current.add(connected);
         
@@ -327,7 +392,6 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
             await fetchStats();
             await fetchConnectionStatus();
             
-            // Check if connection is successful
             const response = await fetch(`/api/user/social-credentials?userId=${userId}`);
             if (response.ok) {
               const credentials = await response.json();
@@ -367,12 +431,11 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
               [connected]: 'disconnected' 
             }));
           } finally {
-            // Remove from verification set after delay
             setTimeout(() => {
               hasVerifiedRef.current.delete(connected);
-            }, 60000); // Allow re-verification after 1 minute
+            }, 60000);
           }
-        }, 3000); // Wait 3 seconds for backend to process
+        }, 3000);
       }
     } else if (error) {
       showToast(`❌ Connection failed: ${decodeURIComponent(error)}`);
@@ -511,46 +574,67 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
               </div>
             </div>
 
-            {/* Card 2: Available Integrations */}
+            {/* Card 2: Available Integrations - UPDATED with Disconnect */}
             <div className="p-6 rounded-2xl bg-white/30 dark:bg-white/10 border border-white/30 dark:border-white/10 shadow-[0_8px_32px_rgba(2,6,23,0.08)] transition-all hover:bg-white/40 dark:hover:bg-white/8">
               <h3 className="text-slate-800 dark:text-slate-200 text-lg font-bold mb-6">Available Integrations</h3>
 
               <div className="space-y-3">
                 {availableServices.map(({ service, label, icon }) => {
                   const loading = loadingConnect === service;
+                  const isDisconnecting = disconnecting[service];
                   const status = connectionStatus[service] || 'disconnected';
                   const error = connectionErrors[service];
                   const isConnected = status === 'connected';
                   const isVerifying = status === 'verifying';
                   
                   return (
-                    <button
-                      aria-label={`Connect ${label}`}
+                    <div
                       key={service}
-                      onClick={() => {
-                        if (!isConnected && !isVerifying) {
-                          handleConnect(service, false);
-                          showToast(`Connecting to ${label}...`);
-                        }
-                      }}
-                      disabled={loading || isVerifying}
-                      className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl transition transform hover:scale-[1.01] hover:shadow-lg border border-slate-200/40 dark:border-slate-700/30 bg-white/30 dark:bg-white/5 backdrop-blur-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl transition border border-slate-200/40 dark:border-slate-700/30 bg-white/30 dark:bg-white/5 backdrop-blur-sm"
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-white/30 dark:bg-white/5">{icon}</div>
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-white/30 dark:bg-white/5">
+                          {icon}
+                        </div>
                         <div className="text-sm font-medium text-slate-800 dark:text-slate-100">
-                          {isConnected ? `${label} Connected` : isVerifying ? `${label} Verifying...` : `Connect ${label}`}
+                          {isConnected ? `${label} Connected` : isVerifying ? `${label} Verifying...` : `${label}`}
                         </div>
                       </div>
 
                       <div className="flex items-center gap-3">
-                        {loading ? (
+                        {loading || isDisconnecting ? (
                           <Loader2 className="h-4 w-4 animate-spin text-slate-600 dark:text-slate-300" />
                         ) : (
-                          <ConnectionStatusIndicator status={status} error={error} />
+                          <>
+                            <ConnectionStatusIndicator status={status} error={error} />
+                            
+                            {/* 🆕 Connect/Disconnect Button */}
+                            {isConnected ? (
+                              <button
+                                onClick={() => openDisconnectDialog(service, label)}
+                                disabled={isDisconnecting}
+                                className="text-xs px-3 py-1.5 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                aria-label={`Disconnect ${label}`}
+                              >
+                                Disconnect
+                              </button>
+                            ) : !isVerifying && (
+                              <button
+                                onClick={() => {
+                                  handleConnect(service, false);
+                                  showToast(`Connecting to ${label}...`);
+                                }}
+                                disabled={loading}
+                                className="text-xs px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                aria-label={`Connect ${label}`}
+                              >
+                                Connect
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -589,6 +673,42 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
               </div>
             )}
           </div>
+
+          {/* 🆕 Confirmation Dialog */}
+          {confirmDialog.isOpen && (
+            <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
+                <div className="p-6">
+                  <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
+                    Disconnect {confirmDialog.label}?
+                  </h3>
+                  <p className="text-sm text-slate-600 dark:text-slate-300 mb-6">
+                    This will remove all credentials for {confirmDialog.label} from both your account and N8N. 
+                    You can reconnect at any time.
+                  </p>
+                  
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setConfirmDialog({ isOpen: false, service: null, label: null })}
+                      className="flex-1 px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (confirmDialog.service && confirmDialog.label) {
+                          handleDisconnect(confirmDialog.service, confirmDialog.label);
+                        }
+                      }}
+                      className="flex-1 px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors"
+                    >
+                      Disconnect
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Toast Notification */}
           {toast && (
