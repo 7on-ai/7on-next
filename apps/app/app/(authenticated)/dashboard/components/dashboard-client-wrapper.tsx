@@ -166,7 +166,9 @@ const ConnectionStatusIndicator = ({
         )}
       </div>
       {hasError && (
-        <AlertCircle className="h-3 w-3 text-orange-500" title={error} />
+        <span title={error || undefined}>
+          <AlertCircle className="h-3 w-3 text-orange-500" />
+        </span>
       )}
     </div>
   );
