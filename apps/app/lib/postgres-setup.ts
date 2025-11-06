@@ -130,6 +130,22 @@ export async function initializeUserPostgresSchema(
     `);
     
     console.log('✅ Triggers created');
+
+    await client.query(`
+      ALTER TABLE user_data_schema.memories 
+      ADD COLUMN IF NOT EXISTS user_id TEXT
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_memories_user 
+      ON user_data_schema.memories(user_id)
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_memories_fts 
+      ON user_data_schema.memories 
+      USING gin(to_tsvector('english', content))
+    `);    
     
     // ✅ Grant permissions to regular user if using admin connection
     if (adminConnectionString && adminConnectionString !== connectionString) {
