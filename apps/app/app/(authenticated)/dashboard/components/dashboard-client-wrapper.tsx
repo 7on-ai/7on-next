@@ -222,6 +222,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
     { service: "spotify" as const, label: "Spotify", icon: <SpotifyIcon /> },
     { service: "discord" as const, label: "Discord", icon: <DiscordIcon /> },
     { service: "linkedin" as const, label: "LinkedIn", icon: <LinkedInIcon /> },
+    { service: "openrouter" as const, label: "OpenRouter", icon: <BrainIcon className="h-5 w-5" /> },
   ];
 
   const availableServices = services.filter((s) => isFeatureAvailable(s.service, currentTier));
@@ -450,30 +451,38 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
     };
   }, [searchParams?.toString(), userId, fetchStats, fetchConnectionStatus]);
 
-  const handleConnect = async (service: keyof typeof CLIENT_IDS, isLocked: boolean) => {
-    if (!userId) {
-      showToast("⚠️ You must be signed in to connect providers.");
-      return;
-    }
-    if (isLocked && isFree) {
-      showToast("🔒 Upgrade required to connect this provider.");
-      return;
-    }
-    if (!CLIENT_IDS[service]) {
-      showToast(`❌ Client ID not configured for ${service}`);
-      return;
-    }
-    try {
-      setLoadingConnect(service);
-      const state = createOAuthState(userId, service);
-      const authUrl = buildAuthorizationUrl(service, state);
+const handleConnect = async (service: keyof typeof CLIENT_IDS | 'openrouter', isLocked: boolean) => {
+  if (!userId) {
+    showToast("⚠️ You must be signed in to connect providers.");
+    return;
+  }
+  if (isLocked && isFree) {
+    showToast("🔒 Upgrade required to connect this provider.");
+    return;
+  }
+  
+  try {
+    setLoadingConnect(service);
+    
+    // 🆕 Handle OpenRouter differently
+    if (service === 'openrouter') {
+      const { generatePKCEChallenge, buildOpenRouterAuthUrl } = await import('@/lib/openrouter-oauth');
+      const { codeVerifier, codeChallenge } = generatePKCEChallenge();
+      const authUrl = buildOpenRouterAuthUrl(userId, codeVerifier, codeChallenge);
       window.location.href = authUrl;
-    } catch (err) {
-      console.error('❌ OAuth Connection Error:', err);
-      showToast("⚠️ Failed to start connection. Try again.");
-      setLoadingConnect(null);
+      return;
     }
-  };
+    
+    // Existing Auth0 flow for other services
+    const state = createOAuthState(userId, service);
+    const authUrl = buildAuthorizationUrl(service, state);
+    window.location.href = authUrl;
+  } catch (err) {
+    console.error('❌ OAuth Connection Error:', err);
+    showToast("⚠️ Failed to start connection. Try again.");
+    setLoadingConnect(null);
+  }
+};
 
   const handleMemorySetup = async () => {
     if (!userId) return;

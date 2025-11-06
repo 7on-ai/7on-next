@@ -32,6 +32,14 @@ export const AUTH0_SCOPES = {
 // ===== INTEGRATION DEFINITIONS =====
 export const AUTH0_INTEGRATIONS: Auth0Integration[] = [
   // ===== FREE TIER =====
+    {
+    key: 'openrouter',
+    name: 'OpenRouter',
+    description: 'Access 100+ AI models via unified API',
+    icon: 'Brain',
+    color: 'bg-purple-500',
+    requiredTier: 'FREE', // หรือ FREE ตามต้องการ
+  },
   {
     key: 'google',
     name: 'Google',
