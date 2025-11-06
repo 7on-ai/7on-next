@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@repo/design-system/components/ui/button";
-import { Github, Linkedin, Sparkles, Loader2, Check, Database, AlertCircle } from "lucide-react";
+import { Github, Linkedin, Sparkles, Loader2, Check, Database, AlertCircle, Brain } from "lucide-react";
 import { useSubscription } from "@repo/auth/hooks/use-subscription";
 import type { SubscriptionTier } from "@repo/auth/client";
 import { GL } from "@/components/gl";
@@ -222,7 +222,7 @@ export function DashboardClientWrapper({ userId, userEmail, initialTier }: Dashb
     { service: "spotify" as const, label: "Spotify", icon: <SpotifyIcon /> },
     { service: "discord" as const, label: "Discord", icon: <DiscordIcon /> },
     { service: "linkedin" as const, label: "LinkedIn", icon: <LinkedInIcon /> },
-    { service: "openrouter" as const, label: "OpenRouter", icon: <BrainIcon className="h-5 w-5" /> },
+    { service: "openrouter" as const, label: "OpenRouter", icon: <Brain className="h-5 w-5" /> },
   ];
 
   const availableServices = services.filter((s) => isFeatureAvailable(s.service, currentTier));
