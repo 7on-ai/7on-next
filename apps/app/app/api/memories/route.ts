@@ -1,4 +1,4 @@
-// apps/app/app/api/memories/route.ts
+// apps/app/app/api/memories/route.ts - FIXED VERSION
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { database as db } from '@repo/database';
@@ -106,8 +106,11 @@ export async function DELETE(request: NextRequest) {
   }
 }
 
+// ✅ FIXED: Handle both API response formats
 async function getPostgresConnectionString(projectId: string): Promise<string | null> {
   try {
+    console.log('🔍 Fetching addons for project:', projectId);
+    
     const addonsResponse = await fetch(
       `https://api.northflank.com/v1/projects/${projectId}/addons`,
       {
@@ -118,12 +121,34 @@ async function getPostgresConnectionString(projectId: string): Promise<string | 
       }
     );
 
-    if (!addonsResponse.ok) return null;
+    if (!addonsResponse.ok) {
+      console.error('❌ Addons API failed:', addonsResponse.status);
+      return null;
+    }
 
-    const addons = await addonsResponse.json();
-    const postgresAddon = addons.data?.find((a: any) => a.spec?.type === 'postgresql');
+    const addonsData = await addonsResponse.json();
+    console.log('📦 Addons response structure:', Object.keys(addonsData));
+    
+    // ✅ Handle both possible response formats
+    const addonsList = addonsData.data?.addons || addonsData.data || [];
+    
+    console.log('📋 Addons list type:', Array.isArray(addonsList) ? 'array' : typeof addonsList);
+    console.log('📊 Addons count:', Array.isArray(addonsList) ? addonsList.length : 'not an array');
+    
+    // ✅ Ensure we're working with an array
+    if (!Array.isArray(addonsList)) {
+      console.error('❌ Addons list is not an array:', addonsList);
+      return null;
+    }
+    
+    const postgresAddon = addonsList.find((a: any) => a.spec?.type === 'postgresql');
 
-    if (!postgresAddon) return null;
+    if (!postgresAddon) {
+      console.error('❌ No PostgreSQL addon found');
+      return null;
+    }
+
+    console.log('✅ Found PostgreSQL addon:', postgresAddon.id);
 
     const credentialsResponse = await fetch(
       `https://api.northflank.com/v1/projects/${projectId}/addons/${postgresAddon.id}/credentials`,
@@ -135,12 +160,25 @@ async function getPostgresConnectionString(projectId: string): Promise<string | 
       }
     );
 
-    if (!credentialsResponse.ok) return null;
+    if (!credentialsResponse.ok) {
+      console.error('❌ Credentials API failed:', credentialsResponse.status);
+      return null;
+    }
 
     const credentials = await credentialsResponse.json();
-    return credentials.data?.envs?.EXTERNAL_POSTGRES_URI || credentials.data?.envs?.POSTGRES_URI || null;
+    const connectionString = credentials.data?.envs?.EXTERNAL_POSTGRES_URI || 
+                            credentials.data?.envs?.POSTGRES_URI || 
+                            null;
+    
+    if (connectionString) {
+      console.log('✅ Connection string retrieved');
+    } else {
+      console.error('❌ No connection string in credentials');
+    }
+    
+    return connectionString;
   } catch (error) {
-    console.error('Error getting connection:', error);
+    console.error('💥 Error getting connection:', error);
     return null;
   }
 }
