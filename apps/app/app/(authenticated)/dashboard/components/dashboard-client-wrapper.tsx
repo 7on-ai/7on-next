@@ -57,8 +57,8 @@ const BASE_SCOPES: Record<string, string> = {
 };
 
 const TIER_FEATURES: Record<string, string[]> = {
-  FREE: ["google", "github"],
-  PRO: ["google", "github", "spotify", "discord"],
+  FREE: ["openrouter", "google", "spotify"],
+  PRO: ["google", "spotify", "github", "discord"],
   BUSINESS: ["google", "github", "spotify", "discord", "linkedin"],
 };
 
