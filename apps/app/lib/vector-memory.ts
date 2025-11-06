@@ -42,7 +42,7 @@ export class VectorMemory {
   }
 
   async getAllMemories(userId: string) {
-    const result = await client.query(
+    const result = await this.client.query(  // ✅ แก้ไขจาก client เป็น this.client
       `SELECT id, content, metadata, created_at, user_id
        FROM user_data_schema.memories 
        WHERE user_id = $1 
