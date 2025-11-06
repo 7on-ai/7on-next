@@ -61,7 +61,7 @@ export function buildOpenRouterAuthUrl(
   codeVerifier: string,
   codeChallenge: string
 ): string {
-  const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL}/api/openrouter-callback`;
+  const callbackUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/openrouter-callback`;
   
   // Store code_verifier in state for callback
   const state = btoa(JSON.stringify({
@@ -71,13 +71,13 @@ export function buildOpenRouterAuthUrl(
   } as OpenRouterPKCEState));
   
   const params = new URLSearchParams({
-    response_type: 'code',
-    redirect_uri: redirectUri,
+    callback_url: callbackUrl, // ✅ ใช้ callback_url แทน redirect_uri
     code_challenge: codeChallenge,
     code_challenge_method: 'S256',
     state,
   });
   
+  // ✅ ใช้ /auth endpoint (ไม่ใช่ /api/v1/auth/keys)
   return `https://openrouter.ai/auth?${params.toString()}`;
 }
 
