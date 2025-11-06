@@ -3,7 +3,7 @@ import { Client } from 'pg';
 
 interface VectorMemoryConfig {
   connectionString: string;
-  openaiApiKey?: string; // optional - ใช้ free embeddings ได้
+  openaiApiKey?: string;
 }
 
 export class VectorMemory {
@@ -20,7 +20,6 @@ export class VectorMemory {
   }
 
   async addMemory(userId: string, content: string, metadata?: any) {
-    // ใช้ simple text search แทน vector (ฟรี 100%)
     await this.client.query(
       `INSERT INTO user_data_schema.memories (user_id, content, metadata) 
        VALUES ($1, $2, $3)`,
@@ -29,9 +28,8 @@ export class VectorMemory {
   }
 
   async searchMemories(userId: string, query: string, limit = 5) {
-    // Full-text search (ฟรี, ไม่ต้อง embeddings)
     const result = await this.client.query(
-      `SELECT id, content, metadata, created_at,
+      `SELECT id, content, metadata, created_at, user_id,
               ts_rank(to_tsvector('english', content), plainto_tsquery('english', $1)) as rank
        FROM user_data_schema.memories
        WHERE user_id = $2 
@@ -44,8 +42,9 @@ export class VectorMemory {
   }
 
   async getAllMemories(userId: string) {
-    const result = await this.client.query(
-      `SELECT * FROM user_data_schema.memories 
+    const result = await client.query(
+      `SELECT id, content, metadata, created_at, user_id
+       FROM user_data_schema.memories 
        WHERE user_id = $1 
        ORDER BY created_at DESC`,
       [userId]
@@ -65,7 +64,6 @@ export class VectorMemory {
   }
 }
 
-// Singleton per connection
 const instances = new Map<string, VectorMemory>();
 
 export async function getVectorMemory(connectionString: string): Promise<VectorMemory> {

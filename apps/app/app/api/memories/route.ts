@@ -1,4 +1,3 @@
-// apps/app/app/api/memories/route.ts - FIXED VERSION
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { database as db } from '@repo/database';
@@ -106,7 +105,6 @@ export async function DELETE(request: NextRequest) {
   }
 }
 
-// ✅ FIXED: Handle both API response formats
 async function getPostgresConnectionString(projectId: string): Promise<string | null> {
   try {
     console.log('🔍 Fetching addons for project:', projectId);
@@ -127,17 +125,15 @@ async function getPostgresConnectionString(projectId: string): Promise<string | 
     }
 
     const addonsData = await addonsResponse.json();
-    console.log('📦 Addons response structure:', Object.keys(addonsData));
+    console.log('📦 Addons response keys:', Object.keys(addonsData));
     
-    // ✅ Handle both possible response formats
+    // ✅ Handle both response formats
     const addonsList = addonsData.data?.addons || addonsData.data || [];
     
-    console.log('📋 Addons list type:', Array.isArray(addonsList) ? 'array' : typeof addonsList);
-    console.log('📊 Addons count:', Array.isArray(addonsList) ? addonsList.length : 'not an array');
+    console.log('📋 Addons type:', Array.isArray(addonsList) ? 'array' : typeof addonsList);
     
-    // ✅ Ensure we're working with an array
     if (!Array.isArray(addonsList)) {
-      console.error('❌ Addons list is not an array:', addonsList);
+      console.error('❌ Addons is not array:', addonsList);
       return null;
     }
     
@@ -173,7 +169,7 @@ async function getPostgresConnectionString(projectId: string): Promise<string | 
     if (connectionString) {
       console.log('✅ Connection string retrieved');
     } else {
-      console.error('❌ No connection string in credentials');
+      console.error('❌ No connection string');
     }
     
     return connectionString;
