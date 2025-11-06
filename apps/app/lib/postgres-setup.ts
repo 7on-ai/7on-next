@@ -44,6 +44,7 @@ export async function initializeUserPostgresSchema(
     await client.query(`
       CREATE TABLE IF NOT EXISTS user_data_schema.memories (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id TEXT,  -- ✅ เพิ่มบรรทัดนี้
         content TEXT NOT NULL,
         metadata JSONB DEFAULT '{}'::jsonb,
         created_at TIMESTAMPTZ DEFAULT NOW(),
