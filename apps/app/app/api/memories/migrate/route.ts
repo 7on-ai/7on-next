@@ -8,6 +8,10 @@ import { Client } from 'pg';
 const NORTHFLANK_API_TOKEN = process.env.NORTHFLANK_API_TOKEN!;
 
 export async function POST(request: NextRequest) {
+  console.log('========================================');
+  console.log('🚀 MIGRATION API CALLED');
+  console.log('Time:', new Date().toISOString());
+  console.log('========================================');
   try {
     const { userId: clerkUserId } = await auth();
     if (!clerkUserId) {
