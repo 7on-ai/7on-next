@@ -4,6 +4,7 @@ import { Client } from 'pg';
 /**
  * Initialize Postgres schema and tables for user memories
  * ✅ Now supports both regular and admin connection strings
+ * ✅ Added pgvector extension and memory_embeddings table
  */
 export async function initializeUserPostgresSchema(
   connectionString: string,
@@ -17,9 +18,27 @@ export async function initializeUserPostgresSchema(
     await client.connect();
     console.log('✅ Connected to Postgres');
     
+    // ✅ Create pgvector extension (must be done before creating tables with vector columns)
+    await client.query(`CREATE EXTENSION IF NOT EXISTS vector`);
+    console.log('✅ pgvector extension created');
+    
     // Create user_data_schema
     await client.query(`CREATE SCHEMA IF NOT EXISTS user_data_schema`);
     console.log('✅ Schema created: user_data_schema');
+    
+    // ✅ Create memory_embeddings table (for vector search)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_data_schema.memory_embeddings (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id TEXT NOT NULL,
+        content TEXT NOT NULL,
+        embedding vector(1536),
+        metadata JSONB DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    console.log('✅ Table created: memory_embeddings');
     
     // Create memories table
     await client.query(`
@@ -45,7 +64,21 @@ export async function initializeUserPostgresSchema(
     `);
     console.log('✅ Table created: conversations');
     
-    // Create indexes
+    // ✅ Create indexes for memory_embeddings
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_memory_embeddings_user 
+      ON user_data_schema.memory_embeddings(user_id)
+    `);
+    
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_memory_embeddings_vector 
+      ON user_data_schema.memory_embeddings 
+      USING ivfflat (embedding vector_cosine_ops)
+      WITH (lists = 100)
+    `);
+    console.log('✅ Vector indexes created');
+    
+    // Create indexes for memories table
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_memories_created 
       ON user_data_schema.memories(created_at DESC)
@@ -69,7 +102,7 @@ export async function initializeUserPostgresSchema(
       $$ language 'plpgsql'
     `);
     
-    // Add triggers
+    // Add triggers for memories table
     await client.query(`
       DROP TRIGGER IF EXISTS update_memories_updated_at ON user_data_schema.memories;
       CREATE TRIGGER update_memories_updated_at 
@@ -78,10 +111,20 @@ export async function initializeUserPostgresSchema(
         EXECUTE FUNCTION user_data_schema.update_updated_at_column()
     `);
     
+    // Add triggers for conversations table
     await client.query(`
       DROP TRIGGER IF EXISTS update_conversations_updated_at ON user_data_schema.conversations;
       CREATE TRIGGER update_conversations_updated_at 
         BEFORE UPDATE ON user_data_schema.conversations 
+        FOR EACH ROW 
+        EXECUTE FUNCTION user_data_schema.update_updated_at_column()
+    `);
+    
+    // ✅ Add triggers for memory_embeddings table
+    await client.query(`
+      DROP TRIGGER IF EXISTS update_memory_embeddings_updated_at ON user_data_schema.memory_embeddings;
+      CREATE TRIGGER update_memory_embeddings_updated_at 
+        BEFORE UPDATE ON user_data_schema.memory_embeddings 
         FOR EACH ROW 
         EXECUTE FUNCTION user_data_schema.update_updated_at_column()
     `);
