@@ -466,8 +466,8 @@ const handleConnect = async (service: keyof typeof CLIENT_IDS | 'openrouter', is
     
     // 🆕 Handle OpenRouter differently
     if (service === 'openrouter') {
-      const { generatePKCEChallenge, buildOpenRouterAuthUrl } = await import('@/lib/openrouter-oauth');
-      const { codeVerifier, codeChallenge } = generatePKCEChallenge();
+      const { generatePKCEChallenge, buildOpenRouterAuthUrl } = await import('@/lib/openrouter-oauth-client');
+      const { codeVerifier, codeChallenge } = await generatePKCEChallenge(); // เพิ่ม await
       const authUrl = buildOpenRouterAuthUrl(userId, codeVerifier, codeChallenge);
       window.location.href = authUrl;
       return;
