@@ -71,7 +71,7 @@ export function MemoriesClient({
     }
   };
   
-  // Semantic search using mem0
+  // ✅ FIX: Semantic search - ใช้ /api/memories แทน /api/mem0
   const handleSemanticSearch = async () => {
     if (!searchQuery.trim()) {
       fetchAllMemories();
@@ -81,7 +81,8 @@ export function MemoriesClient({
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/mem0?query=${encodeURIComponent(searchQuery)}&limit=20`);
+      // ✅ เปลี่ยนจาก /api/mem0 เป็น /api/memories
+      const response = await fetch(`/api/memories?query=${encodeURIComponent(searchQuery)}`);
       
       if (!response.ok) {
         const data = await response.json();
@@ -104,18 +105,20 @@ export function MemoriesClient({
     }
   };
 
-  // Add memory using mem0
+  // ✅ FIX: Add memory - ใช้ /api/memories แทน /api/mem0
   const handleAddMemory = async () => {
     if (!newMessage.trim()) return;
 
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch('/api/mem0', {
+      // ✅ เปลี่ยนจาก /api/mem0 เป็น /api/memories
+      const response = await fetch('/api/memories', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: [{ role: 'user', content: newMessage }],
+          content: newMessage,
+          metadata: {},
         }),
       });
 
@@ -145,27 +148,20 @@ export function MemoriesClient({
     }
   };
 
-  // Delete memory
+  // ✅ FIX: Delete memory - ใช้ /api/memories แทน /api/mem0
   const handleDelete = async (memoryId: string) => {
     if (!confirm('Are you sure you want to delete this memory?')) return;
     
     try {
       setDeleting(memoryId);
       
-      // Try mem0 API first
-      const response = await fetch(`/api/mem0?id=${memoryId}`, {
+      // ✅ เปลี่ยนจาก /api/mem0 เป็น /api/memories
+      const response = await fetch(`/api/memories?id=${memoryId}`, {
         method: 'DELETE',
       });
       
       if (!response.ok) {
-        // Fallback to regular API
-        const fallbackResponse = await fetch(`/api/memories?id=${memoryId}`, {
-          method: 'DELETE',
-        });
-        
-        if (!fallbackResponse.ok) {
-          throw new Error('Failed to delete memory');
-        }
+        throw new Error('Failed to delete memory');
       }
       
       setMemories(prev => prev.filter(m => m.id !== memoryId));
@@ -266,9 +262,9 @@ export function MemoriesClient({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Memories with mem0</h1>
+          <h1 className="text-3xl font-bold">Memories</h1>
           <p className="text-muted-foreground">
-            AI conversation memories with semantic search powered by vector embeddings
+            Store and search your memories using full-text search
           </p>
         </div>
         <Button onClick={fetchAllMemories} disabled={loading}>
@@ -282,13 +278,13 @@ export function MemoriesClient({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Search className="h-5 w-5" />
-            Semantic Search
+            Full-Text Search
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex gap-2">
             <Input
-              placeholder="Search by meaning... (e.g., 'favorite foods', 'travel preferences')"
+              placeholder="Search memories... (e.g., 'pizza', 'birthday')"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSemanticSearch()}
@@ -299,7 +295,7 @@ export function MemoriesClient({
             </Button>
           </div>
           <p className="text-xs text-muted-foreground mt-2">
-            💡 Tip: Search finds similar meanings, not just exact text matches
+            💡 Tip: Searches through all your stored memories
           </p>
         </CardContent>
       </Card>
@@ -326,7 +322,7 @@ export function MemoriesClient({
             </Button>
           </div>
           <p className="text-xs text-muted-foreground mt-2">
-            💾 Memories are stored with vector embeddings for semantic search
+            💾 Memories are stored in your Postgres database
           </p>
         </CardContent>
       </Card>
@@ -350,7 +346,7 @@ export function MemoriesClient({
             <div>
               <p className="text-sm text-muted-foreground">Search Mode</p>
               <p className="text-lg font-semibold">
-                {searchMode === 'semantic' ? '🔍 Semantic' : '📋 All'}
+                {searchMode === 'semantic' ? '🔍 Full-Text' : '📋 All'}
               </p>
             </div>
             <div>
@@ -358,8 +354,8 @@ export function MemoriesClient({
               <p className="text-lg font-semibold">Northflank Postgres</p>
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Vector Storage</p>
-              <p className="text-lg font-semibold">pgvector</p>
+              <p className="text-sm text-muted-foreground">Storage</p>
+              <p className="text-lg font-semibold">PostgreSQL</p>
             </div>
           </div>
         </CardContent>
@@ -410,14 +406,6 @@ export function MemoriesClient({
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm break-words">{memory.content}</p>
-                      
-                      {/* Show relevance score for semantic search */}
-                      {memory.score !== undefined && (
-                        <div className="mt-2 inline-flex items-center gap-2 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 rounded text-xs">
-                          <span className="font-semibold">Relevance:</span>
-                          <span>{(memory.score * 100).toFixed(1)}%</span>
-                        </div>
-                      )}
                       
                       {memory.metadata && Object.keys(memory.metadata).length > 0 && (
                         <details className="mt-2">
