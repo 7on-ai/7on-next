@@ -7,7 +7,6 @@ const NORTHFLANK_API_TOKEN = process.env.NORTHFLANK_API_TOKEN!;
 const WEBHOOK_URL = process.env.WEBHOOK_URL || 'https://your-app.vercel.app/api/setup-webhook';
 const WEBHOOK_AUTH_TOKEN = process.env.WEBHOOK_AUTH_TOKEN || 'webhook-secret-token-7on';
 
-// In-memory set to prevent duplicate runs
 const runningMonitors = new Set<string>();
 
 export async function POST(request: NextRequest) {
@@ -24,7 +23,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get Clerk User ID
     let clerkUserId: string | null = null;
     
     const dbUser = await db.user.findUnique({
@@ -49,7 +47,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Prevent duplicate runs
     if (runningMonitors.has(userId)) {
       console.log('⚠️ Monitoring already running for user:', userId);
       return NextResponse.json({
@@ -59,7 +56,6 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Check existing project
     const existingUser = await db.user.findUnique({
       where: { id: userId },
       select: {
@@ -163,7 +159,6 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      // Start monitoring in background
       monitorN8nDeployment(
         templateRun.data.id,
         userId,
@@ -181,7 +176,7 @@ export async function POST(request: NextRequest) {
           id: templateRun.data.id,
           status: 'initiated',
         },
-        message: 'Template deployment initiated with Chroma + Ollama integration!',
+        message: 'Template deployment initiated with Ollama semantic search!',
         estimatedTime: '5-10 minutes',
         monitoring: 'Ultra-fast monitoring active',
         userCredentials: {
@@ -558,102 +553,82 @@ async function createN8nApiKey(
 }
 
 /**
- * 🆕 Auto-add ingress for Chroma + Ollama to user project
+ * ✅ Add ingress for Ollama only (removed Chroma)
  */
-async function addSharedServicesIngress(userProjectId: string) {
-  const CHROMA_PROJECT_ID = process.env.CHROMA_PROJECT_ID;
+async function addOllamaIngress(userProjectId: string) {
   const OLLAMA_PROJECT_ID = process.env.OLLAMA_PROJECT_ID;
 
-  if (!CHROMA_PROJECT_ID && !OLLAMA_PROJECT_ID) {
-    console.log('⚠️ No shared service project IDs configured');
+  if (!OLLAMA_PROJECT_ID) {
+    console.log('⚠️ No Ollama project ID configured');
     return;
   }
 
-  console.log('🔗 Auto-adding ingress for user project:', userProjectId);
+  console.log('🔗 Auto-adding Ollama ingress to user project:', userProjectId);
 
-  // Helper function to add ingress to a shared service
-  async function addIngressToService(serviceProjectId: string, serviceName: string) {
-    try {
-      // 1. Get current ingress settings
-      const getResponse = await fetch(
-        `https://api.northflank.com/v1/projects/${serviceProjectId}/settings`,
-        {
-          headers: {
-            Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-
-      if (!getResponse.ok) {
-        console.error(`❌ Failed to get ${serviceName} settings:`, await getResponse.text());
-        return;
+  try {
+    // 1. Get current ingress settings
+    const getResponse = await fetch(
+      `https://api.northflank.com/v1/projects/${OLLAMA_PROJECT_ID}/settings`,
+      {
+        headers: {
+          Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
       }
+    );
 
-      const currentSettings = await getResponse.json();
-      const existingProjects = currentSettings.data?.networking?.ingress?.projects || [];
-
-      // 2. Check if user project already in list
-      if (existingProjects.includes(userProjectId)) {
-        console.log(`ℹ️ ${serviceName}: User project already has ingress`);
-        return;
-      }
-
-      // 3. Append new project to existing list
-      const updatedProjects = [...existingProjects, userProjectId];
-
-      const patchResponse = await fetch(
-        `https://api.northflank.com/v1/projects/${serviceProjectId}/settings`,
-        {
-          method: 'PATCH',
-          headers: {
-            Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            networking: {
-              ingress: {
-                projects: updatedProjects,
-              },
-            },
-          }),
-        }
-      );
-
-      if (patchResponse.ok) {
-        console.log(`✅ ${serviceName}: Ingress added successfully`);
-      } else {
-        console.error(`⚠️ ${serviceName}: Ingress update failed:`, await patchResponse.text());
-      }
-    } catch (error) {
-      console.error(`❌ ${serviceName}: Ingress error:`, error);
+    if (!getResponse.ok) {
+      console.error('❌ Failed to get Ollama settings:', await getResponse.text());
+      return;
     }
-  }
 
-  // Add ingress to Chroma
-  if (CHROMA_PROJECT_ID) {
-    await addIngressToService(CHROMA_PROJECT_ID, 'Chroma');
-  }
+    const currentSettings = await getResponse.json();
+    const existingProjects = currentSettings.data?.networking?.ingress?.projects || [];
 
-  // Add ingress to Ollama
-  if (OLLAMA_PROJECT_ID) {
-    await addIngressToService(OLLAMA_PROJECT_ID, 'Ollama');
+    // 2. Check if already added
+    if (existingProjects.includes(userProjectId)) {
+      console.log('ℹ️ Ollama: User project already has ingress');
+      return;
+    }
+
+    // 3. Append new project
+    const updatedProjects = [...existingProjects, userProjectId];
+
+    const patchResponse = await fetch(
+      `https://api.northflank.com/v1/projects/${OLLAMA_PROJECT_ID}/settings`,
+      {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          networking: {
+            ingress: {
+              projects: updatedProjects,
+            },
+          },
+        }),
+      }
+    );
+
+    if (patchResponse.ok) {
+      console.log('✅ Ollama: Ingress added successfully');
+    } else {
+      console.error('⚠️ Ollama: Ingress update failed:', await patchResponse.text());
+    }
+  } catch (error) {
+    console.error('❌ Ollama: Ingress error:', error);
   }
 }
 
 /**
- * 🆕 Add Chroma + Ollama environment variables to n8n service
+ * ✅ Add Ollama environment variable to n8n (removed Chroma)
  */
-async function addChromaOllamaEnvVars(
-  projectId: string,
-  chromaUrl: string,
-  ollamaUrl: string,
-  userId: string
-) {
+async function addOllamaEnvVar(projectId: string, ollamaUrl: string) {
   try {
-    console.log('📝 Adding Chroma + Ollama env vars to n8n...');
+    console.log('📝 Adding Ollama env var to n8n...');
 
-    // Find n8n service
     const servicesResponse = await fetch(
       `https://api.northflank.com/v1/projects/${projectId}/services`,
       {
@@ -681,7 +656,6 @@ async function addChromaOllamaEnvVars(
 
     console.log('✅ n8n service found:', n8nService.id);
 
-    // Update environment variables
     const updateResponse = await fetch(
       `https://api.northflank.com/v1/projects/${projectId}/services/${n8nService.id}/env`,
       {
@@ -692,21 +666,19 @@ async function addChromaOllamaEnvVars(
         },
         body: JSON.stringify({
           env: {
-            CHROMA_URL: chromaUrl,
             OLLAMA_URL: ollamaUrl,
-            USER_ID: userId,
           },
         }),
       }
     );
 
     if (updateResponse.ok) {
-      console.log('✅ Chroma + Ollama env vars added successfully');
+      console.log('✅ Ollama env var added successfully');
     } else {
-      console.error('⚠️ Failed to update env vars:', await updateResponse.text());
+      console.error('⚠️ Failed to update env var:', await updateResponse.text());
     }
   } catch (error) {
-    console.error('❌ Error adding env vars:', error);
+    console.error('❌ Error adding env var:', error);
   }
 }
 
@@ -735,9 +707,9 @@ async function monitorN8nDeployment(
         if (projectId) {
           console.log('✅ Project ID found:', projectId);
           
-          // 🆕 Auto-add ingress to Chroma + Ollama
-          console.log('🔗 Setting up Chroma + Ollama ingress...');
-          await addSharedServicesIngress(projectId);
+          // ✅ Add Ollama ingress only
+          console.log('🔗 Setting up Ollama ingress...');
+          await addOllamaIngress(projectId);
           
           await db.user.update({
             where: { id: userId },
@@ -759,7 +731,6 @@ async function monitorN8nDeployment(
           console.log('✅ N8N_HOST FOUND:', n8nData.n8nUrl);
           n8nFound = true;
 
-          // Get project name
           let projectName = 'Unknown';
           try {
             const projectResponse = await fetch(
@@ -780,13 +751,12 @@ async function monitorN8nDeployment(
             console.log('Could not get project name:', e);
           }
 
-          // Internal URLs for Chroma + Ollama
-          const chromaUrl = 'http://chroma.internal:8000';
+          // ✅ Ollama internal URL only
           const ollamaUrl = 'http://ollama.internal:11434';
 
-          // 🆕 Add environment variables to n8n
-          console.log('📝 Adding Chroma + Ollama env vars to n8n...');
-          await addChromaOllamaEnvVars(projectId, chromaUrl, ollamaUrl, userId);
+          // ✅ Add Ollama env var
+          console.log('📝 Adding Ollama env var to n8n...');
+          await addOllamaEnvVar(projectId, ollamaUrl);
 
           // Create n8n API Key
           console.log('🔑 Creating n8n API Key...');
@@ -798,9 +768,9 @@ async function monitorN8nDeployment(
           );
 
           // ========================================
-          // 🗄️ POSTGRES SETUP
+          // 🗄️ POSTGRES SETUP WITH SEMANTIC SEARCH
           // ========================================
-          console.log('🗄️ Starting Postgres setup...');
+          console.log('🗄️ Starting Postgres + Semantic Search setup...');
           
           let postgresCredentialId: string | null = null;
           let postgresSetupError: string | null = null;
@@ -816,11 +786,12 @@ async function monitorN8nDeployment(
 
             console.log('✅ Postgres connection retrieved');
 
-            console.log('📝 Initializing Postgres schema...');
+            console.log('📝 Initializing Postgres schema with pgvector (768-dim)...');
             const { initializeUserPostgresSchema } = await import('@/lib/postgres-setup');
             
             const schemaSuccess = await initializeUserPostgresSchema(
-              postgresConnection.connectionString
+              postgresConnection.connectionString,
+              postgresConnection.adminConnectionString
             );
 
             if (!schemaSuccess) {
@@ -828,7 +799,7 @@ async function monitorN8nDeployment(
             }
 
             postgresSchemaInitialized = true;
-            console.log('✅ Postgres schema initialized');
+            console.log('✅ Postgres schema + pgvector initialized (768-dim for Ollama)');
 
             console.log('📝 Creating Postgres credential in n8n...');
             const { createPostgresCredentialInN8n } = await import('@/lib/n8n-credentials');
@@ -852,9 +823,7 @@ async function monitorN8nDeployment(
             postgresSetupError = (postgresError as Error).message;
           }
 
-          // ========================================
           // Update database with all results
-          // ========================================
           console.log('💾 Updating database with final results...');
           await db.user.update({
             where: { id: userId },
@@ -868,7 +837,6 @@ async function monitorN8nDeployment(
               northflankProjectStatus: 'ready',
               northflankSecretData: n8nData.allSecrets,
               templateCompletedAt: new Date(),
-              // Postgres fields
               postgresSchemaInitialized,
               n8nPostgresCredentialId: postgresCredentialId,
               postgresSetupError,
@@ -878,16 +846,15 @@ async function monitorN8nDeployment(
           });
 
           if (postgresSchemaInitialized && postgresCredentialId) {
-            console.log('✅ COMPLETE: N8N + Postgres + Chroma + Ollama setup finished!');
+            console.log('🎉 COMPLETE: N8N + Postgres + Ollama Semantic Search ready!');
           } else {
-            console.log('⚠️ PARTIAL: N8N + Chroma + Ollama ready, but Postgres had issues');
+            console.log('⚠️ PARTIAL: N8N + Ollama ready, but Postgres had issues');
           }
           
           return;
         }
       }
 
-      // Wait before next check
       await new Promise((resolve) => setTimeout(resolve, fastPollInterval));
     } catch (error) {
       console.error('ULTRA FAST: Monitoring error:', error);
@@ -895,7 +862,6 @@ async function monitorN8nDeployment(
     }
   }
 
-  // Timeout reached
   console.log('ULTRA FAST: Timeout reached without finding N8N_HOST');
   await db.user.update({
     where: { id: userId },
@@ -907,14 +873,10 @@ async function monitorN8nDeployment(
   });
 }
 
-/**
- * Get Postgres connection from Northflank addon
- */
 async function getPostgresConnection(projectId: string) {
   try {
     console.log('Getting Postgres connection for project:', projectId);
     
-    // 1. List all addons
     const addonsResponse = await fetch(
       `https://api.northflank.com/v1/projects/${projectId}/addons`,
       {
@@ -931,8 +893,6 @@ async function getPostgresConnection(projectId: string) {
     }
 
     const addons = await addonsResponse.json();
-    
-    // 2. Find Postgres addon
     const postgresAddon = addons.data?.find(
       (addon: any) => addon.spec?.type === 'postgresql'
     );
@@ -944,9 +904,46 @@ async function getPostgresConnection(projectId: string) {
 
     console.log('✅ Postgres addon found:', postgresAddon.id);
 
-    // 3. Get connection details
-    const connectionResponse = await fetch(
-      `https://api.northflank.com/v1/projects/${projectId}/addons/${postgresAddon.id}`,
+    // Enable external access if needed
+    if (!postgresAddon.spec?.externalAccessEnabled) {
+      await fetch(
+        `https://api.northflank.com/v1/projects/${projectId}/addons/${postgresAddon.id}`,
+        {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ spec: { externalAccessEnabled: true } }),
+        }
+      );
+      
+      await new Promise(resolve => setTimeout(resolve, 15000));
+    }
+
+    // Resume if paused
+    if (postgresAddon.status === 'paused') {
+      await fetch(
+        `https://api.northflank.com/v1/projects/${projectId}/addons/${postgresAddon.id}/resume`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+      
+      await new Promise(resolve => setTimeout(resolve, 30000));
+    }
+
+    if (postgresAddon.status !== 'running') {
+      console.log('⚠️ Postgres addon not running yet');
+      return null;
+    }
+
+    const credentialsResponse = await fetch(
+      `https://api.northflank.com/v1/projects/${projectId}/addons/${postgresAddon.id}/credentials`,
       {
         headers: {
           Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
@@ -955,33 +952,51 @@ async function getPostgresConnection(projectId: string) {
       }
     );
 
-    if (!connectionResponse.ok) {
-      console.error('Failed to get addon details:', await connectionResponse.text());
+    if (!credentialsResponse.ok) {
+      console.error('Failed to get credentials:', await credentialsResponse.text());
       return null;
     }
 
-    const details = await connectionResponse.json();
-    const connection = details.data?.connection;
+    const credentials = await credentialsResponse.json();
+    const envs = credentials.data?.envs;
 
-    if (!connection) {
-      console.log('❌ No connection details found');
+    const adminConnectionString = envs?.EXTERNAL_POSTGRES_URI_ADMIN || envs?.POSTGRES_URI_ADMIN;
+    const connectionString = envs?.EXTERNAL_POSTGRES_URI || envs?.POSTGRES_URI;
+
+    if (!connectionString) {
+      console.log('❌ No connection string found');
       return null;
     }
 
-    console.log('✅ Connection details retrieved');
+    const parsed = parsePostgresUrl(connectionString);
+    if (!parsed) {
+      console.log('❌ Failed to parse connection string');
+      return null;
+    }
+
+    console.log('✅ Postgres connection details retrieved');
 
     return {
-      connectionString: connection.connectionString,
-      config: {
-        host: connection.host,
-        port: parseInt(connection.port || '5432'),
-        database: connection.database,
-        user: connection.user,
-        password: connection.password,
-      },
+      connectionString,
+      adminConnectionString: adminConnectionString || connectionString,
+      config: parsed,
     };
   } catch (error) {
     console.error('❌ Error getting Postgres connection:', error);
+    return null;
+  }
+}
+
+function parsePostgresUrl(url: string) {
+  try {
+    const regex = /postgresql:\/\/([^:]+):([^@]+)@([^:]+):(\d+)\/([^?]+)/;
+    const match = url.match(regex);
+    if (!match) return null;
+    
+    const [, user, password, host, port, database] = match;
+    
+    return { host, port: parseInt(port), database, user, password };
+  } catch {
     return null;
   }
 }

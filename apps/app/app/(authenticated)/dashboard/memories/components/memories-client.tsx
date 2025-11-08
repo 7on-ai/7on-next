@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@repo/design-system/components/ui/card";
 import { Button } from "@repo/design-system/components/ui/button";
 import { Input } from "@repo/design-system/components/ui/input";
-import { Loader2, Database, AlertCircle, RefreshCw, Trash2, Clock, Search, Plus } from "lucide-react";
+import { Loader2, Database, AlertCircle, RefreshCw, Trash2, Clock, Search, Plus, Sparkles } from "lucide-react";
 
 interface Memory {
   id: string;
@@ -47,7 +47,7 @@ export function MemoriesClient({
     }
   }, [isInitialized, hasCredential]);
   
-  // Fetch all memories (traditional way)
+  // Fetch all memories
   const fetchAllMemories = async () => {
     try {
       setLoading(true);
@@ -71,7 +71,7 @@ export function MemoriesClient({
     }
   };
   
-  // ✅ FIX: Semantic search - ใช้ /api/memories แทน /api/mem0
+  // Semantic search using Ollama + pgvector
   const handleSemanticSearch = async () => {
     if (!searchQuery.trim()) {
       fetchAllMemories();
@@ -81,7 +81,6 @@ export function MemoriesClient({
     setLoading(true);
     setError(null);
     try {
-      // ✅ เปลี่ยนจาก /api/mem0 เป็น /api/memories
       const response = await fetch(`/api/memories?query=${encodeURIComponent(searchQuery)}`);
       
       if (!response.ok) {
@@ -105,14 +104,13 @@ export function MemoriesClient({
     }
   };
 
-  // ✅ FIX: Add memory - ใช้ /api/memories แทน /api/mem0
+  // Add memory with automatic embedding generation
   const handleAddMemory = async () => {
     if (!newMessage.trim()) return;
 
     setLoading(true);
     setError(null);
     try {
-      // ✅ เปลี่ยนจาก /api/mem0 เป็น /api/memories
       const response = await fetch('/api/memories', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -148,14 +146,13 @@ export function MemoriesClient({
     }
   };
 
-  // ✅ FIX: Delete memory - ใช้ /api/memories แทน /api/mem0
+  // Delete memory
   const handleDelete = async (memoryId: string) => {
     if (!confirm('Are you sure you want to delete this memory?')) return;
     
     try {
       setDeleting(memoryId);
       
-      // ✅ เปลี่ยนจาก /api/mem0 เป็น /api/memories
       const response = await fetch(`/api/memories?id=${memoryId}`, {
         method: 'DELETE',
       });
@@ -262,9 +259,12 @@ export function MemoriesClient({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Memories</h1>
+          <h1 className="text-3xl font-bold flex items-center gap-2">
+            <Sparkles className="h-8 w-8 text-purple-500" />
+            Semantic Memories
+          </h1>
           <p className="text-muted-foreground">
-            Store and search your memories using full-text search
+            AI-powered memory system with semantic search using Ollama + pgvector
           </p>
         </div>
         <Button onClick={fetchAllMemories} disabled={loading}>
@@ -274,28 +274,28 @@ export function MemoriesClient({
       </div>
       
       {/* Semantic Search Card */}
-      <Card>
+      <Card className="border-purple-200 dark:border-purple-800">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Search className="h-5 w-5" />
-            Full-Text Search
+            <Search className="h-5 w-5 text-purple-500" />
+            Semantic Search
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex gap-2">
             <Input
-              placeholder="Search memories... (e.g., 'pizza', 'birthday')"
+              placeholder="Search by meaning... (e.g., 'favorite foods', 'travel preferences')"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSemanticSearch()}
               className="flex-1"
             />
-            <Button onClick={handleSemanticSearch} disabled={loading}>
+            <Button onClick={handleSemanticSearch} disabled={loading} className="bg-purple-600 hover:bg-purple-700">
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
             </Button>
           </div>
           <p className="text-xs text-muted-foreground mt-2">
-            💡 Tip: Searches through all your stored memories
+            🧠 AI understands meaning - search "favorite cuisine" finds "I love Thai food"
           </p>
         </CardContent>
       </Card>
@@ -322,7 +322,7 @@ export function MemoriesClient({
             </Button>
           </div>
           <p className="text-xs text-muted-foreground mt-2">
-            💾 Memories are stored in your Postgres database
+            🤖 Memories are converted to 768-dim vectors using Ollama (free, self-hosted)
           </p>
         </CardContent>
       </Card>
@@ -346,16 +346,16 @@ export function MemoriesClient({
             <div>
               <p className="text-sm text-muted-foreground">Search Mode</p>
               <p className="text-lg font-semibold">
-                {searchMode === 'semantic' ? '🔍 Full-Text' : '📋 All'}
+                {searchMode === 'semantic' ? '🔍 Semantic' : '📋 All'}
               </p>
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Database</p>
-              <p className="text-lg font-semibold">Northflank Postgres</p>
+              <p className="text-sm text-muted-foreground">Embedding Model</p>
+              <p className="text-lg font-semibold">Ollama (768-dim)</p>
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Storage</p>
-              <p className="text-lg font-semibold">PostgreSQL</p>
+              <p className="text-sm text-muted-foreground">Vector Storage</p>
+              <p className="text-lg font-semibold">pgvector + HNSW</p>
             </div>
           </div>
         </CardContent>
@@ -366,7 +366,7 @@ export function MemoriesClient({
         <CardHeader>
           <CardTitle>
             {searchMode === 'semantic' && searchQuery 
-              ? `Search Results for "${searchQuery}"` 
+              ? `Semantic Search Results for "${searchQuery}"` 
               : 'All Memories'}
           </CardTitle>
         </CardHeader>
@@ -380,6 +380,11 @@ export function MemoriesClient({
               <AlertCircle className="h-8 w-8 mx-auto mb-2" />
               <p className="font-semibold">Error loading memories</p>
               <p className="text-sm mt-1">{error}</p>
+              {error.includes('Ollama') && (
+                <p className="text-xs mt-2 text-muted-foreground">
+                  Make sure Ollama service is running in Northflank
+                </p>
+              )}
               <Button onClick={fetchAllMemories} variant="outline" className="mt-4">
                 Try Again
               </Button>
@@ -406,6 +411,15 @@ export function MemoriesClient({
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm break-words">{memory.content}</p>
+                      
+                      {/* Show similarity score for semantic search */}
+                      {memory.score !== undefined && (
+                        <div className="mt-2 inline-flex items-center gap-2 px-2 py-1 bg-purple-100 dark:bg-purple-900/30 rounded text-xs">
+                          <Sparkles className="h-3 w-3" />
+                          <span className="font-semibold">Similarity:</span>
+                          <span>{(memory.score * 100).toFixed(1)}%</span>
+                        </div>
+                      )}
                       
                       {memory.metadata && Object.keys(memory.metadata).length > 0 && (
                         <details className="mt-2">

@@ -2,15 +2,14 @@
 import { Client } from 'pg';
 
 /**
- * Initialize Postgres schema and tables for user memories
- * ✅ Now supports both regular and admin connection strings
- * ✅ Added pgvector extension and memory_embeddings table
+ * Initialize Postgres schema with pgvector for semantic memory
+ * ✅ 768 dimensions for nomic-embed-text (Ollama)
+ * ✅ HNSW index for fast vector search
  */
 export async function initializeUserPostgresSchema(
   connectionString: string,
   adminConnectionString?: string
 ): Promise<boolean> {
-  // ✅ Use admin connection for schema creation if provided
   const setupConnectionString = adminConnectionString || connectionString;
   const client = new Client({ connectionString: setupConnectionString });
   
@@ -18,42 +17,42 @@ export async function initializeUserPostgresSchema(
     await client.connect();
     console.log('✅ Connected to Postgres');
     
-    // ✅ Create pgvector extension (must be done before creating tables with vector columns)
+    // ===== 1. Create pgvector extension =====
     await client.query(`CREATE EXTENSION IF NOT EXISTS vector`);
     console.log('✅ pgvector extension created');
     
-    // Create user_data_schema
+    // ===== 2. Create schema =====
     await client.query(`CREATE SCHEMA IF NOT EXISTS user_data_schema`);
     console.log('✅ Schema created: user_data_schema');
     
-    // ✅ Create memory_embeddings table (for vector search)
+    // ===== 3. Create memory_embeddings table (768-dim for nomic-embed-text) =====
     await client.query(`
       CREATE TABLE IF NOT EXISTS user_data_schema.memory_embeddings (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id TEXT NOT NULL,
         content TEXT NOT NULL,
-        embedding vector(1536),
+        embedding vector(768),
         metadata JSONB DEFAULT '{}'::jsonb,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )
     `);
-    console.log('✅ Table created: memory_embeddings');
+    console.log('✅ Table created: memory_embeddings (768-dim vectors)');
     
-    // Create memories table
+    // ===== 4. Create backup memories table (optional, for non-vector data) =====
     await client.query(`
       CREATE TABLE IF NOT EXISTS user_data_schema.memories (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id TEXT,  -- ✅ เพิ่มบรรทัดนี้
+        user_id TEXT,
         content TEXT NOT NULL,
         metadata JSONB DEFAULT '{}'::jsonb,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )
     `);
-    console.log('✅ Table created: memories');
+    console.log('✅ Table created: memories (backup table)');
     
-    // Create conversations table
+    // ===== 5. Create conversations table =====
     await client.query(`
       CREATE TABLE IF NOT EXISTS user_data_schema.conversations (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -65,24 +64,31 @@ export async function initializeUserPostgresSchema(
     `);
     console.log('✅ Table created: conversations');
     
-    // ✅ Create indexes for memory_embeddings
+    // ===== 6. Create indexes for memory_embeddings =====
+    
+    // User ID index
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_memory_embeddings_user 
       ON user_data_schema.memory_embeddings(user_id)
     `);
     
+    // HNSW vector index (better than IVFFlat for small-medium datasets)
     await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_memory_embeddings_vector 
+      CREATE INDEX IF NOT EXISTS idx_memory_embeddings_vector_hnsw 
       ON user_data_schema.memory_embeddings 
-      USING ivfflat (embedding vector_cosine_ops)
-      WITH (lists = 100)
+      USING hnsw (embedding vector_cosine_ops)
     `);
-    console.log('✅ Vector indexes created');
+    console.log('✅ Vector HNSW index created (fast semantic search)');
     
-    // Create indexes for memories table
+    // ===== 7. Create indexes for memories table =====
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_memories_created 
       ON user_data_schema.memories(created_at DESC)
+    `);
+    
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_memories_user 
+      ON user_data_schema.memories(user_id)
     `);
     
     await client.query(`
@@ -90,9 +96,16 @@ export async function initializeUserPostgresSchema(
       ON user_data_schema.memories USING GIN (metadata)
     `);
     
-    console.log('✅ Indexes created');
+    // Full-text search index (fallback)
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_memories_fts 
+      ON user_data_schema.memories 
+      USING gin(to_tsvector('english', content))
+    `);
     
-    // Create updated_at trigger function
+    console.log('✅ All indexes created');
+    
+    // ===== 8. Create updated_at trigger function =====
     await client.query(`
       CREATE OR REPLACE FUNCTION user_data_schema.update_updated_at_column()
       RETURNS TRIGGER AS $$
@@ -103,52 +116,44 @@ export async function initializeUserPostgresSchema(
       $$ language 'plpgsql'
     `);
     
-    // Add triggers for memories table
-    await client.query(`
-      DROP TRIGGER IF EXISTS update_memories_updated_at ON user_data_schema.memories;
-      CREATE TRIGGER update_memories_updated_at 
-        BEFORE UPDATE ON user_data_schema.memories 
-        FOR EACH ROW 
-        EXECUTE FUNCTION user_data_schema.update_updated_at_column()
-    `);
+    // ===== 9. Add triggers =====
     
-    // Add triggers for conversations table
+    // memory_embeddings trigger
     await client.query(`
-      DROP TRIGGER IF EXISTS update_conversations_updated_at ON user_data_schema.conversations;
-      CREATE TRIGGER update_conversations_updated_at 
-        BEFORE UPDATE ON user_data_schema.conversations 
-        FOR EACH ROW 
-        EXECUTE FUNCTION user_data_schema.update_updated_at_column()
-    `);
-    
-    // ✅ Add triggers for memory_embeddings table
-    await client.query(`
-      DROP TRIGGER IF EXISTS update_memory_embeddings_updated_at ON user_data_schema.memory_embeddings;
+      DROP TRIGGER IF EXISTS update_memory_embeddings_updated_at 
+      ON user_data_schema.memory_embeddings;
+      
       CREATE TRIGGER update_memory_embeddings_updated_at 
         BEFORE UPDATE ON user_data_schema.memory_embeddings 
         FOR EACH ROW 
         EXECUTE FUNCTION user_data_schema.update_updated_at_column()
     `);
     
-    console.log('✅ Triggers created');
-
+    // memories trigger
     await client.query(`
-      ALTER TABLE user_data_schema.memories 
-      ADD COLUMN IF NOT EXISTS user_id TEXT
+      DROP TRIGGER IF EXISTS update_memories_updated_at 
+      ON user_data_schema.memories;
+      
+      CREATE TRIGGER update_memories_updated_at 
+        BEFORE UPDATE ON user_data_schema.memories 
+        FOR EACH ROW 
+        EXECUTE FUNCTION user_data_schema.update_updated_at_column()
     `);
-
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_memories_user 
-      ON user_data_schema.memories(user_id)
-    `);
-
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_memories_fts 
-      ON user_data_schema.memories 
-      USING gin(to_tsvector('english', content))
-    `);    
     
-    // ✅ Grant permissions to regular user if using admin connection
+    // conversations trigger
+    await client.query(`
+      DROP TRIGGER IF EXISTS update_conversations_updated_at 
+      ON user_data_schema.conversations;
+      
+      CREATE TRIGGER update_conversations_updated_at 
+        BEFORE UPDATE ON user_data_schema.conversations 
+        FOR EACH ROW 
+        EXECUTE FUNCTION user_data_schema.update_updated_at_column()
+    `);
+    
+    console.log('✅ Triggers created');
+    
+    // ===== 10. Grant permissions (if using admin connection) =====
     if (adminConnectionString && adminConnectionString !== connectionString) {
       const regularConfig = parsePostgresUrl(connectionString);
       
@@ -161,17 +166,18 @@ export async function initializeUserPostgresSchema(
         await client.query(`ALTER DEFAULT PRIVILEGES IN SCHEMA user_data_schema GRANT ALL ON TABLES TO ${regularConfig.user}`);
         await client.query(`ALTER DEFAULT PRIVILEGES IN SCHEMA user_data_schema GRANT ALL ON SEQUENCES TO ${regularConfig.user}`);
         
-        console.log('✅ Permissions granted to regular user');
+        console.log('✅ Permissions granted');
       }
     }
     
+    console.log('🎉 Postgres schema initialization completed!');
     return true;
   } catch (error) {
-    console.error('❌ Error initializing postgres schema:', error);
+    console.error('❌ Error initializing schema:', error);
     return false;
   } finally {
     await client.end();
-    console.log('✅ Postgres connection closed');
+    console.log('✅ Connection closed');
   }
 }
 
@@ -187,7 +193,7 @@ export async function testPostgresConnection(connectionString: string): Promise<
     console.log('✅ Postgres connection test passed:', result.rows[0]);
     return true;
   } catch (error) {
-    console.error('❌ Postgres connection test failed:', error);
+    console.error('❌ Connection test failed:', error);
     return false;
   } finally {
     await client.end();
@@ -195,7 +201,7 @@ export async function testPostgresConnection(connectionString: string): Promise<
 }
 
 /**
- * Parse Postgres connection URL
+ * Parse Postgres URL
  */
 function parsePostgresUrl(url: string) {
   try {
