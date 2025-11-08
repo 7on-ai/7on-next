@@ -13,8 +13,12 @@ export class VectorMemory {
 
   constructor(config: VectorMemoryConfig) {
     this.client = new Client({ connectionString: config.connectionString });
-    // ใช้ internal URL สำหรับ Northflank
-    this.ollamaUrl = config.ollamaUrl || process.env.OLLAMA_URL || 'http://ollama.internal:11434';
+    
+    // ✅ CRITICAL FIX: Use external URL for Vercel → Northflank communication
+    // Internal URLs (*.internal) only work INSIDE Northflank
+    this.ollamaUrl = config.ollamaUrl || process.env.OLLAMA_EXTERNAL_URL || process.env.OLLAMA_URL || 'http://ollama.internal:11434';
+    
+    console.log('🔗 Ollama URL:', this.ollamaUrl.replace(/\/\/.+@/, '//*****@')); // Hide credentials in logs
   }
 
   async connect() {
@@ -26,6 +30,8 @@ export class VectorMemory {
    */
   private async generateEmbedding(text: string): Promise<number[]> {
     try {
+      console.log(`📡 Calling Ollama at: ${this.ollamaUrl}/api/embeddings`);
+      
       const response = await fetch(`${this.ollamaUrl}/api/embeddings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -33,6 +39,8 @@ export class VectorMemory {
           model: this.embeddingModel,
           prompt: text,
         }),
+        // Add timeout
+        signal: AbortSignal.timeout(30000), // 30 second timeout
       });
 
       if (!response.ok) {
@@ -41,10 +49,27 @@ export class VectorMemory {
       }
 
       const data = await response.json();
+      
+      if (!data.embedding || !Array.isArray(data.embedding)) {
+        throw new Error('Invalid embedding response from Ollama');
+      }
+      
+      console.log(`✅ Generated ${data.embedding.length}-dim embedding`);
       return data.embedding;
     } catch (error) {
       console.error('❌ Error generating embedding:', error);
-      throw new Error(`Ollama connection failed at ${this.ollamaUrl}: ${(error as Error).message}`);
+      
+      // Better error message
+      if (error instanceof Error) {
+        if (error.message.includes('ENOTFOUND') || error.message.includes('getaddrinfo')) {
+          throw new Error(`Cannot reach Ollama at ${this.ollamaUrl}. Make sure Ollama service has external access enabled in Northflank.`);
+        }
+        if (error.message.includes('ETIMEDOUT') || error.message.includes('timeout')) {
+          throw new Error(`Ollama request timeout. Service might be starting or overloaded.`);
+        }
+      }
+      
+      throw new Error(`Ollama connection failed: ${(error as Error).message}`);
     }
   }
 
@@ -57,6 +82,11 @@ export class VectorMemory {
       
       // Generate embedding using Ollama
       const embedding = await this.generateEmbedding(content);
+      
+      // Validate embedding dimension (should be 768 for nomic-embed-text)
+      if (embedding.length !== 768) {
+        throw new Error(`Invalid embedding dimension: ${embedding.length}, expected 768`);
+      }
       
       // Convert to pgvector format
       const vectorString = `[${embedding.join(',')}]`;
@@ -170,6 +200,7 @@ export class VectorMemory {
     try {
       const response = await fetch(`${this.ollamaUrl}/api/tags`, {
         method: 'GET',
+        signal: AbortSignal.timeout(10000), // 10 second timeout
       });
       return response.ok;
     } catch {
@@ -185,11 +216,13 @@ export class VectorMemory {
 // Singleton instances (connection pooling)
 const instances = new Map<string, VectorMemory>();
 
-export async function getVectorMemory(connectionString: string): Promise<VectorMemory> {
-  if (!instances.has(connectionString)) {
-    const instance = new VectorMemory({ connectionString });
+export async function getVectorMemory(connectionString: string, ollamaUrl?: string): Promise<VectorMemory> {
+  const cacheKey = `${connectionString}:${ollamaUrl || 'default'}`;
+  
+  if (!instances.has(cacheKey)) {
+    const instance = new VectorMemory({ connectionString, ollamaUrl });
     await instance.connect();
-    instances.set(connectionString, instance);
+    instances.set(cacheKey, instance);
   }
-  return instances.get(connectionString)!;
+  return instances.get(cacheKey)!;
 }

@@ -27,7 +27,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'DB connection failed' }, { status: 500 });
     }
 
-    const vectorMemory = await getVectorMemory(connectionString);
+    // ✅ Use external Ollama URL
+    const ollamaUrl = process.env.OLLAMA_EXTERNAL_URL;
+    const vectorMemory = await getVectorMemory(connectionString, ollamaUrl);
 
     const memories = query
       ? await vectorMemory.searchMemories(user.id, query)
@@ -62,7 +64,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'DB connection failed' }, { status: 500 });
     }
 
-    const vectorMemory = await getVectorMemory(connectionString);
+    // ✅ Use external Ollama URL
+    const ollamaUrl = process.env.OLLAMA_EXTERNAL_URL;
+    const vectorMemory = await getVectorMemory(connectionString, ollamaUrl);
+    
     await vectorMemory.addMemory(user.id, content, metadata);
 
     return NextResponse.json({ success: true });
@@ -95,7 +100,9 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'DB connection failed' }, { status: 500 });
     }
 
-    const vectorMemory = await getVectorMemory(connectionString);
+    const ollamaUrl = process.env.OLLAMA_EXTERNAL_URL;
+    const vectorMemory = await getVectorMemory(connectionString, ollamaUrl);
+    
     await vectorMemory.deleteMemory(memoryId);
 
     return NextResponse.json({ success: true });
@@ -125,12 +132,7 @@ async function getPostgresConnectionString(projectId: string): Promise<string | 
     }
 
     const addonsData = await addonsResponse.json();
-    console.log('📦 Addons response keys:', Object.keys(addonsData));
-    
-    // ✅ Handle both response formats
     const addonsList = addonsData.data?.addons || addonsData.data || [];
-    
-    console.log('📋 Addons type:', Array.isArray(addonsList) ? 'array' : typeof addonsList);
     
     if (!Array.isArray(addonsList)) {
       console.error('❌ Addons is not array:', addonsList);
