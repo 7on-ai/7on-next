@@ -27,7 +27,6 @@ export async function POST(request: NextRequest) {
     // Get Clerk User ID
     let clerkUserId: string | null = null;
     
-    // Try to get from database first
     const dbUser = await db.user.findUnique({
       where: { id: userId },
       select: { clerkId: true },
@@ -37,7 +36,6 @@ export async function POST(request: NextRequest) {
       clerkUserId = dbUser.clerkId;
       console.log('✅ Clerk User ID from database:', clerkUserId);
     } else {
-      // Fallback: try to get from auth() if this is called from authenticated context
       const authResult = await auth();
       if (authResult?.userId) {
         clerkUserId = authResult.userId;
@@ -76,7 +74,6 @@ export async function POST(request: NextRequest) {
     if (existingUser?.northflankProjectId) {
       console.log('User already has a project:', existingUser.northflankProjectId);
 
-      // Verify project exists in Northflank
       const projectResponse = await fetch(
         `https://api.northflank.com/v1/projects/${existingUser.northflankProjectId}`,
         {
@@ -90,14 +87,12 @@ export async function POST(request: NextRequest) {
       if (projectResponse.ok) {
         const project = await projectResponse.json();
 
-        // Try to get N8N_HOST if not stored
         let n8nUrl = existingUser.n8nUrl;
         if (!n8nUrl) {
           const n8nData = await getN8nHostFromProject(existingUser.northflankProjectId);
           if (n8nData?.n8nUrl) {
             n8nUrl = n8nData.n8nUrl;
 
-            // Update database with N8N URL
             await db.user.update({
               where: { id: userId },
               data: {
@@ -107,7 +102,6 @@ export async function POST(request: NextRequest) {
               },
             });
 
-            // Try to create missing API key for existing project
             if (!existingUser.n8nApiKey && existingUser.n8nEncryptionKey) {
               console.log('Existing project: Attempting to create missing n8n API Key...');
               const fallbackKey = generateApiKey();
@@ -145,7 +139,6 @@ export async function POST(request: NextRequest) {
 
     console.log('Creating new project for user...');
 
-    // Add user to running monitors
     runningMonitors.add(userId);
 
     try {
@@ -158,7 +151,6 @@ export async function POST(request: NextRequest) {
       
       console.log('Template run initiated - starting monitoring');
 
-      // Store initial data
       await db.user.update({
         where: { id: userId },
         data: {
@@ -171,7 +163,7 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      // Start monitoring in background (non-blocking)
+      // Start monitoring in background
       monitorN8nDeployment(
         templateRun.data.id,
         userId,
@@ -189,20 +181,18 @@ export async function POST(request: NextRequest) {
           id: templateRun.data.id,
           status: 'initiated',
         },
-        message: 'Template deployment initiated with Neon database integration!',
+        message: 'Template deployment initiated with Chroma + Ollama integration!',
         estimatedTime: '5-10 minutes',
-        monitoring: 'Ultra-fast N8N_HOST monitoring active',
+        monitoring: 'Ultra-fast monitoring active',
         userCredentials: {
           email: userEmail,
           encryptionKey: templateRun.encryptionKey,
         },
-        apiKeyMethod: 'Hybrid: REST API preferred, fallback to generated key',
       });
     } catch (templateError) {
       runningMonitors.delete(userId);
       console.error('Template initiation failed:', templateError);
 
-      // Fallback to manual creation
       const manualResult = await createCompleteProject(userId, userName, userEmail);
 
       await db.user.update({
@@ -222,7 +212,7 @@ export async function POST(request: NextRequest) {
         success: true,
         method: 'manual',
         project: manualResult.project,
-        message: 'Basic project created successfully. N8N deployment needs to be done manually.',
+        message: 'Basic project created successfully.',
         userCredentials: {
           email: userEmail,
           encryptionKey: manualResult.encryptionKey,
@@ -233,12 +223,10 @@ export async function POST(request: NextRequest) {
     const err = error as Error;
     console.error('💥 Error in provision-northflank:', err);
 
-    // Clean up running monitors
     const body = await request.json().catch(() => ({}));
     if (body.userId) {
       runningMonitors.delete(body.userId);
 
-      // Update database with error
       try {
         await db.user.update({
           where: { id: body.userId },
@@ -287,7 +275,6 @@ async function startSundayTemplate(
 
   console.log('Generated N8N API Key for fallback:', n8nApiKey.substring(0, 10) + '...[REDACTED]');
 
-  // ✅ Validate required environment variables
   const requiredEnvVars = {
     DATABASE_URL: process.env.DATABASE_URL,
     GOOGLE_CLIENT_ID: process.env.GOOGLE_OAUTH_CLIENT_ID,
@@ -305,26 +292,20 @@ async function startSundayTemplate(
   const templateRunPayload = {
     arguments: {
       id: userId.substring(0, 8),
-      clerk_user_id: clerkUserId, // ✅ เพิ่ม Clerk User ID
+      clerk_user_id: clerkUserId,
       user_id: userId,
       user_email: userEmail,
       user_name: firstName,
       webhook_url: WEBHOOK_URL,
       webhook_token: WEBHOOK_AUTH_TOKEN,
       N8N_ENCRYPTION_KEY: encryptionKey,
-      neon_database_url: process.env.DATABASE_URL!, // ✅ ใช้ Neon database URL
-      google_oauth_client_id: process.env.GOOGLE_OAUTH_CLIENT_ID!, // ✅ เพิ่ม Google OAuth
-      google_oauth_client_secret: process.env.GOOGLE_OAUTH_CLIENT_SECRET!, // ✅ เพิ่ม Google OAuth
+      neon_database_url: process.env.DATABASE_URL!,
+      google_oauth_client_id: process.env.GOOGLE_OAUTH_CLIENT_ID!,
+      google_oauth_client_secret: process.env.GOOGLE_OAUTH_CLIENT_SECRET!,
     },
   };
 
   console.log('Starting Sunday template with Neon database...');
-  console.log('Arguments:', {
-    ...templateRunPayload.arguments,
-    N8N_ENCRYPTION_KEY: '[REDACTED]',
-    neon_database_url: '[REDACTED]',
-    google_oauth_client_secret: '[REDACTED]',
-  });
 
   const response = await fetch('https://api.northflank.com/v1/templates/sunday/runs', {
     method: 'POST',
@@ -411,7 +392,6 @@ async function getProjectIdFromTemplate(templateRunId: string): Promise<string |
     const runDetails = await runResponse.json();
     console.log('Template run status:', runDetails.data?.status);
 
-    // Method 1: Check workflow steps
     if (runDetails.data?.spec?.steps) {
       const projectStep = runDetails.data.spec.steps.find((step: any) => step.kind === 'Project');
       if (projectStep?.response?.data?.id) {
@@ -420,13 +400,11 @@ async function getProjectIdFromTemplate(templateRunId: string): Promise<string |
       }
     }
 
-    // Method 2: Check output/results
     if (runDetails.data?.output?.project_id) {
       console.log('✅ Project ID found in output:', runDetails.data.output.project_id);
       return runDetails.data.output.project_id;
     }
 
-    // Method 3: Check results array
     if (runDetails.data?.results && Array.isArray(runDetails.data.results)) {
       for (const result of runDetails.data.results) {
         if (result.kind === 'Project' && result.data?.id) {
@@ -485,7 +463,6 @@ async function getN8nHostFromProject(projectId: string) {
 
     const secretDetails = await secretDetailsResponse.json();
 
-    // Check if N8N_HOST exists and is not a template variable
     if (secretDetails.data?.data?.N8N_HOST && !secretDetails.data.data.N8N_HOST.includes('${refs.')) {
       const n8nUrl = `https://${secretDetails.data.data.N8N_HOST}`;
       console.log('FAST CHECK: N8N_HOST found!', n8nUrl);
@@ -512,20 +489,17 @@ async function createN8nApiKey(
   try {
     console.log('Creating n8n API Key for URL:', n8nUrl);
     
-    // Wait for n8n to be fully ready
     console.log('Waiting for N8N to be ready...');
-    await new Promise((resolve) => setTimeout(resolve, 30000)); // 30 seconds
+    await new Promise((resolve) => setTimeout(resolve, 30000));
 
     const password = `7On${encryptionKey}`;
     const credentials = btoa(`${userEmail}:${password}`);
 
-    // Try multiple times with exponential backoff
     const maxRetries = 5;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         console.log(`API Key creation attempt ${attempt}/${maxRetries}`);
 
-        // Check if N8N is responding first
         const healthCheck = await fetch(`${n8nUrl}/healthz`, {
           method: 'GET',
           headers: { 'Content-Type': 'application/json' },
@@ -574,13 +548,165 @@ async function createN8nApiKey(
       }
     }
 
-    // Fallback: Use pre-generated key
     console.log('⚠️ REST API method failed, using pre-generated key as fallback');
     return preGeneratedKey;
   } catch (err) {
     console.error('Critical error creating n8n API Key:', (err as Error).message);
     console.log('🔄 Using pre-generated key as fallback');
     return preGeneratedKey;
+  }
+}
+
+/**
+ * 🆕 Auto-add ingress for Chroma + Ollama to user project
+ */
+async function addSharedServicesIngress(userProjectId: string) {
+  const CHROMA_PROJECT_ID = process.env.CHROMA_PROJECT_ID;
+  const OLLAMA_PROJECT_ID = process.env.OLLAMA_PROJECT_ID;
+
+  if (!CHROMA_PROJECT_ID && !OLLAMA_PROJECT_ID) {
+    console.log('⚠️ No shared service project IDs configured');
+    return;
+  }
+
+  console.log('🔗 Auto-adding ingress for user project:', userProjectId);
+
+  // Helper function to add ingress to a shared service
+  async function addIngressToService(serviceProjectId: string, serviceName: string) {
+    try {
+      // 1. Get current ingress settings
+      const getResponse = await fetch(
+        `https://api.northflank.com/v1/projects/${serviceProjectId}/settings`,
+        {
+          headers: {
+            Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (!getResponse.ok) {
+        console.error(`❌ Failed to get ${serviceName} settings:`, await getResponse.text());
+        return;
+      }
+
+      const currentSettings = await getResponse.json();
+      const existingProjects = currentSettings.data?.networking?.ingress?.projects || [];
+
+      // 2. Check if user project already in list
+      if (existingProjects.includes(userProjectId)) {
+        console.log(`ℹ️ ${serviceName}: User project already has ingress`);
+        return;
+      }
+
+      // 3. Append new project to existing list
+      const updatedProjects = [...existingProjects, userProjectId];
+
+      const patchResponse = await fetch(
+        `https://api.northflank.com/v1/projects/${serviceProjectId}/settings`,
+        {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            networking: {
+              ingress: {
+                projects: updatedProjects,
+              },
+            },
+          }),
+        }
+      );
+
+      if (patchResponse.ok) {
+        console.log(`✅ ${serviceName}: Ingress added successfully`);
+      } else {
+        console.error(`⚠️ ${serviceName}: Ingress update failed:`, await patchResponse.text());
+      }
+    } catch (error) {
+      console.error(`❌ ${serviceName}: Ingress error:`, error);
+    }
+  }
+
+  // Add ingress to Chroma
+  if (CHROMA_PROJECT_ID) {
+    await addIngressToService(CHROMA_PROJECT_ID, 'Chroma');
+  }
+
+  // Add ingress to Ollama
+  if (OLLAMA_PROJECT_ID) {
+    await addIngressToService(OLLAMA_PROJECT_ID, 'Ollama');
+  }
+}
+
+/**
+ * 🆕 Add Chroma + Ollama environment variables to n8n service
+ */
+async function addChromaOllamaEnvVars(
+  projectId: string,
+  chromaUrl: string,
+  ollamaUrl: string,
+  userId: string
+) {
+  try {
+    console.log('📝 Adding Chroma + Ollama env vars to n8n...');
+
+    // Find n8n service
+    const servicesResponse = await fetch(
+      `https://api.northflank.com/v1/projects/${projectId}/services`,
+      {
+        headers: {
+          Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (!servicesResponse.ok) {
+      console.error('Failed to list services:', await servicesResponse.text());
+      return;
+    }
+
+    const services = await servicesResponse.json();
+    const n8nService = services.data?.find((s: any) => 
+      s.name?.includes('n8n') || s.spec?.image?.includes('n8nio')
+    );
+
+    if (!n8nService) {
+      console.log('❌ n8n service not found in project');
+      return;
+    }
+
+    console.log('✅ n8n service found:', n8nService.id);
+
+    // Update environment variables
+    const updateResponse = await fetch(
+      `https://api.northflank.com/v1/projects/${projectId}/services/${n8nService.id}/env`,
+      {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          env: {
+            CHROMA_URL: chromaUrl,
+            OLLAMA_URL: ollamaUrl,
+            USER_ID: userId,
+          },
+        }),
+      }
+    );
+
+    if (updateResponse.ok) {
+      console.log('✅ Chroma + Ollama env vars added successfully');
+    } else {
+      console.error('⚠️ Failed to update env vars:', await updateResponse.text());
+    }
+  } catch (error) {
+    console.error('❌ Error adding env vars:', error);
   }
 }
 
@@ -591,10 +717,10 @@ async function monitorN8nDeployment(
   userEmail: string,
   preGeneratedApiKey: string
 ) {
-  console.log('ULTRA FAST MONITORING: Started for template', templateRunId, 'user', userId);
+  console.log('ULTRA FAST MONITORING: Started for template', templateRunId);
 
-  const maxWaitTime = 900000; // 15 minutes max
-  const fastPollInterval = 30000; // Check every 30 seconds
+  const maxWaitTime = 900000; // 15 minutes
+  const fastPollInterval = 30000; // 30 seconds
   const startTime = Date.now();
   let projectId: string | null = null;
   let n8nFound = false;
@@ -607,9 +733,12 @@ async function monitorN8nDeployment(
         projectId = await getProjectIdFromTemplate(templateRunId);
         
         if (projectId) {
-          console.log('ULTRA FAST: Project ID found!', projectId);
+          console.log('✅ Project ID found:', projectId);
           
-          // Update database with project ID immediately
+          // 🆕 Auto-add ingress to Chroma + Ollama
+          console.log('🔗 Setting up Chroma + Ollama ingress...');
+          await addSharedServicesIngress(projectId);
+          
           await db.user.update({
             where: { id: userId },
             data: {
@@ -627,7 +756,7 @@ async function monitorN8nDeployment(
         const n8nData = await getN8nHostFromProject(projectId);
         
         if (n8nData?.n8nUrl) {
-          console.log('ULTRA FAST: N8N_HOST FOUND!', n8nData.n8nUrl);
+          console.log('✅ N8N_HOST FOUND:', n8nData.n8nUrl);
           n8nFound = true;
 
           // Get project name
@@ -651,8 +780,16 @@ async function monitorN8nDeployment(
             console.log('Could not get project name:', e);
           }
 
-          // Try to create n8n API Key
-          console.log('ULTRA FAST: Attempting to create n8n API Key via REST API...');
+          // Internal URLs for Chroma + Ollama
+          const chromaUrl = 'http://chroma.internal:8000';
+          const ollamaUrl = 'http://ollama.internal:11434';
+
+          // 🆕 Add environment variables to n8n
+          console.log('📝 Adding Chroma + Ollama env vars to n8n...');
+          await addChromaOllamaEnvVars(projectId, chromaUrl, ollamaUrl, userId);
+
+          // Create n8n API Key
+          console.log('🔑 Creating n8n API Key...');
           const finalApiKey = await createN8nApiKey(
             n8nData.n8nUrl,
             encryptionKey,
@@ -661,30 +798,25 @@ async function monitorN8nDeployment(
           );
 
           // ========================================
-          // 🆕 POSTGRES SETUP - เพิ่มส่วนนี้
+          // 🗄️ POSTGRES SETUP
           // ========================================
-          console.log('🗄️ POSTGRES SETUP: Starting...');
+          console.log('🗄️ Starting Postgres setup...');
           
           let postgresCredentialId: string | null = null;
           let postgresSetupError: string | null = null;
           let postgresSchemaInitialized = false;
 
           try {
-            // 1. Get Postgres connection from Northflank
-            console.log('📝 Step 1: Getting Postgres connection from Northflank...');
+            console.log('📝 Getting Postgres connection...');
             const postgresConnection = await getPostgresConnection(projectId);
 
             if (!postgresConnection) {
-              throw new Error('Failed to get Postgres connection from Northflank');
+              throw new Error('Failed to get Postgres connection');
             }
 
-            console.log('✅ Postgres connection retrieved:', {
-              host: postgresConnection.config.host,
-              database: postgresConnection.config.database,
-            });
+            console.log('✅ Postgres connection retrieved');
 
-            // 2. Initialize schema and tables
-            console.log('📝 Step 2: Initializing Postgres schema and tables...');
+            console.log('📝 Initializing Postgres schema...');
             const { initializeUserPostgresSchema } = await import('@/lib/postgres-setup');
             
             const schemaSuccess = await initializeUserPostgresSchema(
@@ -696,10 +828,9 @@ async function monitorN8nDeployment(
             }
 
             postgresSchemaInitialized = true;
-            console.log('✅ Postgres schema initialized successfully');
+            console.log('✅ Postgres schema initialized');
 
-            // 3. Create Postgres credential in n8n
-            console.log('📝 Step 3: Creating Postgres credential in n8n...');
+            console.log('📝 Creating Postgres credential in n8n...');
             const { createPostgresCredentialInN8n } = await import('@/lib/n8n-credentials');
             
             const credentialId = await createPostgresCredentialInN8n({
@@ -710,11 +841,11 @@ async function monitorN8nDeployment(
             });
 
             if (!credentialId) {
-              throw new Error('Failed to create Postgres credential in n8n');
+              throw new Error('Failed to create Postgres credential');
             }
 
             postgresCredentialId = credentialId;
-            console.log('✅ Postgres credential created in n8n:', credentialId);
+            console.log('✅ Postgres credential created:', credentialId);
 
           } catch (postgresError) {
             console.error('❌ Postgres setup failed:', postgresError);
@@ -724,7 +855,7 @@ async function monitorN8nDeployment(
           // ========================================
           // Update database with all results
           // ========================================
-          console.log('ULTRA FAST: Updating database with final results...');
+          console.log('💾 Updating database with final results...');
           await db.user.update({
             where: { id: userId },
             data: {
@@ -737,7 +868,7 @@ async function monitorN8nDeployment(
               northflankProjectStatus: 'ready',
               northflankSecretData: n8nData.allSecrets,
               templateCompletedAt: new Date(),
-              // 🆕 Postgres fields
+              // Postgres fields
               postgresSchemaInitialized,
               n8nPostgresCredentialId: postgresCredentialId,
               postgresSetupError,
@@ -747,9 +878,9 @@ async function monitorN8nDeployment(
           });
 
           if (postgresSchemaInitialized && postgresCredentialId) {
-            console.log('✅ COMPLETE: N8N + Postgres setup finished successfully!');
+            console.log('✅ COMPLETE: N8N + Postgres + Chroma + Ollama setup finished!');
           } else {
-            console.log('⚠️ PARTIAL: N8N ready but Postgres setup had issues');
+            console.log('⚠️ PARTIAL: N8N + Chroma + Ollama ready, but Postgres had issues');
           }
           
           return;
@@ -777,13 +908,13 @@ async function monitorN8nDeployment(
 }
 
 /**
- * Helper: Get Postgres connection from Northflank addon
+ * Get Postgres connection from Northflank addon
  */
 async function getPostgresConnection(projectId: string) {
   try {
     console.log('Getting Postgres connection for project:', projectId);
     
-    // 1. List all addons in the project
+    // 1. List all addons
     const addonsResponse = await fetch(
       `https://api.northflank.com/v1/projects/${projectId}/addons`,
       {
@@ -837,11 +968,7 @@ async function getPostgresConnection(projectId: string) {
       return null;
     }
 
-    console.log('✅ Connection details retrieved:', {
-      host: connection.host,
-      port: connection.port,
-      database: connection.database,
-    });
+    console.log('✅ Connection details retrieved');
 
     return {
       connectionString: connection.connectionString,
