@@ -1,3 +1,4 @@
+// packages/database/prisma/schema.prisma
 generator client {
   provider        = "prisma-client-js"
   previewFeatures = ["driverAdapters"]
@@ -20,7 +21,7 @@ model User {
   apiCallsCount    Int              @default(0)
   usageResetAt     DateTime         @default(now())
 
-  // ===== N8N & Northflank Fields =====
+  // ===== N8N & Northflank =====
   n8nUrl                   String?
   n8nUserEmail             String?
   n8nEncryptionKey         String?
@@ -34,11 +35,25 @@ model User {
   templateCompletedAt      DateTime?
   n8nSetupError            String?
 
-  // ===== NEW: Postgres Memories Fields =====
-  n8nPostgresCredentialId   String?   // Credential ID ใน n8n
-  postgresSchemaInitialized Boolean   @default(false) // ตรวจสอบว่าสร้าง schema แล้ว
-  postgresSetupError        String?   // Error message ถ้าสร้างไม่สำเร็จ
-  postgresSetupAt           DateTime? // เวลาที่ setup เสร็จ
+  // ===== Postgres Memory =====
+  n8nPostgresCredentialId   String?
+  postgresSchemaInitialized Boolean   @default(false)
+  postgresSetupError        String?
+  postgresSetupAt           DateTime?
+
+  // ===== LoRA Training =====
+  loraAdapterVersion    String?   @default("v1")
+  loraLastTrainedAt     DateTime?
+  loraTrainingStatus    String?   @default("idle")
+  loraTrainingError     String?
+  loraAutoTrainEnabled  Boolean   @default(false)
+  loraTrainThreshold    Int       @default(100)
+
+  // ===== Two-Channel + MCL Stats =====
+  goodChannelCount      Int       @default(0)
+  badChannelCount       Int       @default(0)
+  mclChainCount         Int       @default(0)
+  lastConsolidationAt   DateTime?
 
   subscriptions       Subscription[]
   usageLogs           UsageLog[]
