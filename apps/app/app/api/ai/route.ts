@@ -34,13 +34,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Project not found' }, { status: 400 });
     }
 
-    // 1. Call Gating Service
+    // 1. Get Postgres connection FIRST (ย้ายมาก่อน)
+    const connectionString = await getPostgresConnectionString(user.northflankProjectId);
+    if (!connectionString) {
+      throw new Error('Database connection failed');
+    }
+
+    // 2. Call Gating Service WITH database_url
     const gatingResponse = await fetch(`${GATING_SERVICE_URL}/gating/route`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         user_id: user.id,
         text: message,
+        database_url: connectionString, // ← เพิ่มบรรทัดนี้สำคัญมาก!
         session_id: sessionId,
       }),
     });
@@ -51,7 +58,7 @@ export async function POST(request: NextRequest) {
 
     const gatingData = await gatingResponse.json();
 
-    // 2. If routed to bad channel and has safe counterfactual, return it
+    // 3. If routed to bad channel and has safe counterfactual, return it
     if (gatingData.routing === 'bad' && gatingData.safe_counterfactual) {
       return NextResponse.json({
         response: gatingData.safe_counterfactual,
@@ -59,12 +66,6 @@ export async function POST(request: NextRequest) {
         detected: gatingData.scores,
         usedSafeFallback: true,
       });
-    }
-
-    // 3. Get Postgres connection
-    const connectionString = await getPostgresConnectionString(user.northflankProjectId);
-    if (!connectionString) {
-      throw new Error('Database connection failed');
     }
 
     // 4. Generate response with inference engine
