@@ -3,7 +3,22 @@ import { auth, currentUser } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
 import { database } from '@repo/database';
 import { Header } from '../../components/header';
-import { LoraTrainingComplete } from './components/lora-training-complete';
+import dynamic from 'next/dynamic';
+
+// Dynamic import เพื่อป้องกัน SSR error
+const LoraTrainingComplete = dynamic(
+  () => import('./components/lora-training-complete').then(mod => ({ 
+    default: mod.LoraTrainingComplete 
+  })),
+  { 
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-gray-100" />
+      </div>
+    )
+  }
+);
 
 export const metadata = {
   title: 'LoRA Training',
