@@ -289,7 +289,7 @@ export async function DELETE(request: NextRequest) {
       try {
         await client.connect();
         
-        // อัปเดต job ล่าสุดที่กำลังรัน
+        // ✅ แก้ไข SQL query - ใช้ subquery แทน ORDER BY ใน UPDATE
         await client.query(`
           UPDATE user_data_schema.training_jobs 
           SET 
@@ -297,14 +297,21 @@ export async function DELETE(request: NextRequest) {
             error_message = 'Cancelled by user',
             completed_at = NOW(),
             updated_at = NOW()
-          WHERE user_id = $1 
-            AND status = 'running'
-          ORDER BY created_at DESC
-          LIMIT 1
+          WHERE id = (
+            SELECT id 
+            FROM user_data_schema.training_jobs
+            WHERE user_id = $1 
+              AND status = 'running'
+            ORDER BY created_at DESC
+            LIMIT 1
+          )
         `, [user.id]);
         
         console.log('✅ Training job status updated to cancelled');
         
+      } catch (dbError) {
+        console.error('⚠️ Database update error:', dbError);
+        // ไม่ throw error เพราะเราอัปเดต Prisma สำเร็จแล้ว
       } finally {
         await client.end();
       }
