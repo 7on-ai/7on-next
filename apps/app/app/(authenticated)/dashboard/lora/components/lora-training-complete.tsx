@@ -99,7 +99,7 @@ export function LoraTrainingComplete({ user }: { user: User }) {
 
       if (response.ok) {
         alert('✅ Counts synced successfully!');
-        window.location.reload();
+        await fetchStatus();
       } else {
         alert(`❌ Error: ${data.error}`);
       }
