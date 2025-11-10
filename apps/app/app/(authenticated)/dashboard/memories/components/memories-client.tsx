@@ -5,23 +5,13 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@repo/design-system/components/ui/card";
 import { Button } from "@repo/design-system/components/ui/button";
 import { Input } from "@repo/design-system/components/ui/input";
-import { Loader2, Database, AlertCircle, RefreshCw, Trash2, Clock, Search, Plus, Sparkles } from "lucide-react";
+import { Alert, AlertDescription } from "@repo/design-system/components/ui/alert";
+import { Loader2, Database, AlertCircle, RefreshCw, Trash2, Clock, Search, Plus, Sparkles, CheckCircle2 } from "lucide-react";
 
-interface Memory {
-  id: string;
-  content: string;
-  metadata: any;
-  score?: number;
-  created_at: string;
-  updated_at?: string;
-}
-
-interface MemoriesClientProps {
-  userId: string;
-  isInitialized: boolean;
-  hasCredential: boolean;
-  setupError: string | null;
-  projectStatus: string | null;
+interface OllamaStatus {
+  status: 'online' | 'offline' | 'unreachable' | 'pulling';
+  models: string[];
+  hasNomicEmbed: boolean;
 }
 
 export function MemoriesClient({ 
@@ -30,8 +20,8 @@ export function MemoriesClient({
   hasCredential, 
   setupError,
   projectStatus 
-}: MemoriesClientProps) {
-  const [memories, setMemories] = useState<Memory[]>([]);
+}: any) {
+  const [memories, setMemories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -39,15 +29,63 @@ export function MemoriesClient({
   const [newMessage, setNewMessage] = useState("");
   const [searchMode, setSearchMode] = useState<'all' | 'semantic'>('all');
   
+  // ✅ NEW: Ollama status
+  const [ollamaStatus, setOllamaStatus] = useState<OllamaStatus | null>(null);
+  const [checkingOllama, setCheckingOllama] = useState(false);
+  
   useEffect(() => {
     if (isInitialized && hasCredential) {
+      checkOllamaStatus();
       fetchAllMemories();
     } else {
       setLoading(false);
     }
   }, [isInitialized, hasCredential]);
   
-  // Fetch all memories
+  // ✅ Check Ollama status
+  const checkOllamaStatus = async () => {
+    try {
+      setCheckingOllama(true);
+      const response = await fetch('/api/ollama/setup');
+      const data = await response.json();
+      setOllamaStatus(data);
+    } catch (err) {
+      console.error('Ollama check error:', err);
+    } finally {
+      setCheckingOllama(false);
+    }
+  };
+  
+  // ✅ Setup Ollama (pull models)
+  const setupOllama = async () => {
+    try {
+      setCheckingOllama(true);
+      setError(null);
+      
+      const response = await fetch('/api/ollama/setup', {
+        method: 'POST',
+      });
+      
+      const data = await response.json();
+      
+      if (data.status === 'pulling') {
+        setError('Models are being downloaded. This may take 2-3 minutes. Please wait...');
+        // Poll status every 10 seconds
+        setTimeout(checkOllamaStatus, 10000);
+      } else if (data.status === 'ready') {
+        setOllamaStatus(data);
+        setError(null);
+      } else {
+        setError(data.error || 'Ollama setup failed');
+      }
+      
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setCheckingOllama(false);
+    }
+  };
+  
   const fetchAllMemories = async () => {
     try {
       setLoading(true);
@@ -71,7 +109,6 @@ export function MemoriesClient({
     }
   };
   
-  // Semantic search using Ollama + pgvector
   const handleSemanticSearch = async () => {
     if (!searchQuery.trim()) {
       fetchAllMemories();
@@ -104,7 +141,6 @@ export function MemoriesClient({
     }
   };
 
-  // Add memory with automatic embedding generation
   const handleAddMemory = async () => {
     if (!newMessage.trim()) return;
 
@@ -129,7 +165,6 @@ export function MemoriesClient({
       
       if (data.success) {
         setNewMessage('');
-        // Refresh memories
         if (searchMode === 'semantic' && searchQuery) {
           await handleSemanticSearch();
         } else {
@@ -146,7 +181,6 @@ export function MemoriesClient({
     }
   };
 
-  // Delete memory
   const handleDelete = async (memoryId: string) => {
     if (!confirm('Are you sure you want to delete this memory?')) return;
     
@@ -187,12 +221,8 @@ export function MemoriesClient({
                 ✅ Database schema created successfully!
               </p>
               <p className="text-muted-foreground">
-                ⏳ Waiting for N8N service to be ready... This can take 1-2 minutes as the service boots up.
+                ⏳ Waiting for N8N service to be ready...
               </p>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                The setup will complete automatically once N8N is ready
-              </div>
               <Button onClick={() => window.location.reload()} variant="outline">
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Check Status
@@ -204,7 +234,7 @@ export function MemoriesClient({
     );
   }
   
-  // Status: Not initialized at all
+  // Status: Not initialized
   if (!isInitialized) {
     return (
       <div className="max-w-7xl mx-auto p-6">
@@ -218,34 +248,19 @@ export function MemoriesClient({
           <CardContent>
             <div className="space-y-4">
               {setupError ? (
-                <>
-                  <p className="text-red-600 dark:text-red-400">
-                    Setup Error: {setupError}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    Please contact support if this persists.
-                  </p>
-                </>
+                <p className="text-red-600">{setupError}</p>
               ) : projectStatus === 'ready' ? (
-                <>
-                  <p className="text-muted-foreground">
-                    Your database is ready to be initialized. Click "Setup Database" on the dashboard to begin.
-                  </p>
-                </>
+                <p className="text-muted-foreground">
+                  Click "Setup Database" on the dashboard to begin.
+                </p>
               ) : (
-                <>
-                  <p className="text-muted-foreground">
-                    Your Northflank project is being created. This usually takes 2-5 minutes.
-                  </p>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Project Status: {projectStatus || 'creating'}
-                  </div>
-                </>
+                <p className="text-muted-foreground">
+                  Project is being created...
+                </p>
               )}
               <Button onClick={() => window.location.reload()} variant="outline">
                 <RefreshCw className="h-4 w-4 mr-2" />
-                Refresh Page
+                Refresh
               </Button>
             </div>
           </CardContent>
@@ -264,14 +279,93 @@ export function MemoriesClient({
             Semantic Memories
           </h1>
           <p className="text-muted-foreground">
-            AI-powered memory system with semantic search using Ollama + pgvector
+            AI-powered memory with Ollama + pgvector
           </p>
         </div>
         <Button onClick={fetchAllMemories} disabled={loading}>
           {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-          Refresh All
+          Refresh
         </Button>
       </div>
+      
+      {/* ✅ Ollama Status Card */}
+      {ollamaStatus && (
+        <Card className={
+          ollamaStatus.status === 'online' && ollamaStatus.hasNomicEmbed
+            ? 'border-green-200 dark:border-green-800'
+            : 'border-yellow-200 dark:border-yellow-800'
+        }>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              {ollamaStatus.status === 'online' && ollamaStatus.hasNomicEmbed ? (
+                <CheckCircle2 className="h-5 w-5 text-green-500" />
+              ) : (
+                <AlertCircle className="h-5 w-5 text-yellow-500" />
+              )}
+              Ollama Status
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm">Service:</span>
+                <span className={`font-semibold ${
+                  ollamaStatus.status === 'online' ? 'text-green-600' : 'text-yellow-600'
+                }`}>
+                  {ollamaStatus.status}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm">nomic-embed-text:</span>
+                <span className={`font-semibold ${
+                  ollamaStatus.hasNomicEmbed ? 'text-green-600' : 'text-red-600'
+                }`}>
+                  {ollamaStatus.hasNomicEmbed ? '✅ Ready' : '❌ Missing'}
+                </span>
+              </div>
+              
+              {!ollamaStatus.hasNomicEmbed && (
+                <Alert className="mt-4">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    The embedding model needs to be downloaded (2-3 minutes)
+                  </AlertDescription>
+                </Alert>
+              )}
+              
+              <div className="flex gap-2 mt-4">
+                <Button 
+                  onClick={checkOllamaStatus} 
+                  disabled={checkingOllama}
+                  variant="outline"
+                  size="sm"
+                >
+                  {checkingOllama ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Check Status'}
+                </Button>
+                
+                {!ollamaStatus.hasNomicEmbed && (
+                  <Button 
+                    onClick={setupOllama} 
+                    disabled={checkingOllama}
+                    size="sm"
+                  >
+                    {checkingOllama ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                    Pull Models
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      
+      {/* Error Alert */}
+      {error && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
       
       {/* Semantic Search Card */}
       <Card className="border-purple-200 dark:border-purple-800">
@@ -284,18 +378,23 @@ export function MemoriesClient({
         <CardContent>
           <div className="flex gap-2">
             <Input
-              placeholder="Search by meaning... (e.g., 'favorite foods', 'travel preferences')"
+              placeholder="Search by meaning..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSemanticSearch()}
               className="flex-1"
+              disabled={!ollamaStatus?.hasNomicEmbed}
             />
-            <Button onClick={handleSemanticSearch} disabled={loading} className="bg-purple-600 hover:bg-purple-700">
+            <Button 
+              onClick={handleSemanticSearch} 
+              disabled={loading || !ollamaStatus?.hasNomicEmbed} 
+              className="bg-purple-600 hover:bg-purple-700"
+            >
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
             </Button>
           </div>
           <p className="text-xs text-muted-foreground mt-2">
-            🧠 AI understands meaning - search "favorite cuisine" finds "I love Thai food"
+            🧠 AI understands meaning
           </p>
         </CardContent>
       </Card>
@@ -311,18 +410,22 @@ export function MemoriesClient({
         <CardContent>
           <div className="flex gap-2">
             <Input
-              placeholder="Type something to remember... (e.g., 'I love pizza', 'My birthday is in June')"
+              placeholder="Type something to remember..."
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAddMemory()}
               className="flex-1"
+              disabled={!ollamaStatus?.hasNomicEmbed}
             />
-            <Button onClick={handleAddMemory} disabled={loading || !newMessage.trim()}>
+            <Button 
+              onClick={handleAddMemory} 
+              disabled={loading || !newMessage.trim() || !ollamaStatus?.hasNomicEmbed}
+            >
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
             </Button>
           </div>
           <p className="text-xs text-muted-foreground mt-2">
-            🤖 Memories are converted to 768-dim vectors using Ollama (free, self-hosted)
+            🤖 Converted to 768-dim vectors using Ollama
           </p>
         </CardContent>
       </Card>
@@ -332,7 +435,7 @@ export function MemoriesClient({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Database className="h-5 w-5" />
-            Storage Statistics
+            Statistics
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -366,7 +469,7 @@ export function MemoriesClient({
         <CardHeader>
           <CardTitle>
             {searchMode === 'semantic' && searchQuery 
-              ? `Semantic Search Results for "${searchQuery}"` 
+              ? `Results for "${searchQuery}"` 
               : 'All Memories'}
           </CardTitle>
         </CardHeader>
@@ -375,31 +478,10 @@ export function MemoriesClient({
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
-          ) : error ? (
-            <div className="text-center py-12 text-red-500">
-              <AlertCircle className="h-8 w-8 mx-auto mb-2" />
-              <p className="font-semibold">Error loading memories</p>
-              <p className="text-sm mt-1">{error}</p>
-              {error.includes('Ollama') && (
-                <p className="text-xs mt-2 text-muted-foreground">
-                  Make sure Ollama service is running in Northflank
-                </p>
-              )}
-              <Button onClick={fetchAllMemories} variant="outline" className="mt-4">
-                Try Again
-              </Button>
-            </div>
           ) : memories.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Database className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p className="font-semibold">
-                {searchMode === 'semantic' ? 'No matching memories found' : 'No memories yet'}
-              </p>
-              <p className="text-sm">
-                {searchMode === 'semantic' 
-                  ? 'Try a different search query or add new memories' 
-                  : 'Add your first memory using the form above'}
-              </p>
+              <p>No memories yet</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -412,28 +494,15 @@ export function MemoriesClient({
                     <div className="flex-1 min-w-0">
                       <p className="text-sm break-words">{memory.content}</p>
                       
-                      {/* Show similarity score for semantic search */}
                       {memory.score !== undefined && (
                         <div className="mt-2 inline-flex items-center gap-2 px-2 py-1 bg-purple-100 dark:bg-purple-900/30 rounded text-xs">
                           <Sparkles className="h-3 w-3" />
-                          <span className="font-semibold">Similarity:</span>
-                          <span>{(memory.score * 100).toFixed(1)}%</span>
+                          <span>Similarity: {(memory.score * 100).toFixed(1)}%</span>
                         </div>
                       )}
                       
-                      {memory.metadata && Object.keys(memory.metadata).length > 0 && (
-                        <details className="mt-2">
-                          <summary className="text-xs text-muted-foreground cursor-pointer hover:underline">
-                            View metadata
-                          </summary>
-                          <pre className="mt-2 text-xs text-muted-foreground bg-muted p-2 rounded overflow-auto">
-                            {JSON.stringify(memory.metadata, null, 2)}
-                          </pre>
-                        </details>
-                      )}
-                      <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
-                        <span>Created: {new Date(memory.created_at).toLocaleString()}</span>
-                        <span>ID: {memory.id.slice(0, 8)}...</span>
+                      <div className="mt-2 text-xs text-muted-foreground">
+                        {new Date(memory.created_at).toLocaleString()}
                       </div>
                     </div>
                     <Button
@@ -441,7 +510,6 @@ export function MemoriesClient({
                       size="sm"
                       onClick={() => handleDelete(memory.id)}
                       disabled={deleting === memory.id}
-                      className="flex-shrink-0"
                     >
                       {deleting === memory.id ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
