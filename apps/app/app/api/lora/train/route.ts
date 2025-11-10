@@ -9,7 +9,7 @@ const OLLAMA_PROJECT_ID = process.env.OLLAMA_PROJECT_ID!;
 const OLLAMA_SERVICE_ID = process.env.OLLAMA_SERVICE_ID || 'ollama';
 
 // ✅ Internal service URL (from Northflank)
-const OLLAMA_INTERNAL_URL = 'http://sun--ollama--fppvxj4w99rz.code.run';
+const OLLAMA_INTERNAL_URL = 'http://train--ollama--fppvxj4w99rz.code.run:5000';
 const OLLAMA_TRAINING_ENDPOINT = `${OLLAMA_INTERNAL_URL}/api/train`;
 
 // ===== POST: Start Training =====
