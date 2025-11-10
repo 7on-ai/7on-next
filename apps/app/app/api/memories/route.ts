@@ -74,11 +74,13 @@ export async function POST(request: NextRequest) {
     const ollamaUrl = process.env.OLLAMA_EXTERNAL_URL;
     const vectorMemory = await getVectorMemory(connectionString, ollamaUrl);
     
-    // ✅ CRITICAL: Pass user.id (database ID, not Clerk ID)
     console.log(`📝 Adding memory for user: ${user.id}`);
     await vectorMemory.addMemory(user.id, content.trim(), metadata);
     
-    console.log(`✅ Memory added successfully`);
+    await db.user.update({
+      where: { id: user.id },
+      data: { goodChannelCount: { increment: 1 } },
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {
