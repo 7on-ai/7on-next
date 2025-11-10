@@ -1,9 +1,4 @@
-// apps/app/app/api/lora/train/route.ts
-/**
- * LoRA Training Orchestration API
- * ใช้ Northflank Jobs API แทน N8N
- */
-
+// apps/app/app/api/lora/train/route.ts - FIXED: Added billing configuration
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { database as db } from '@repo/database';
@@ -67,7 +62,7 @@ export async function POST(request: NextRequest) {
     const adapterVersion = `v${Date.now()}`;
     const jobName = `train-${user.id.slice(0, 8)}-${adapterVersion}`;
 
-    // 🚀 Create Northflank Job
+    // 🚀 Create Northflank Job with proper billing configuration
     console.log(`🚀 Creating training job: ${jobName}`);
     
     const jobSpec = {
@@ -75,20 +70,33 @@ export async function POST(request: NextRequest) {
       type: 'job',
       description: `LoRA training for user ${user.id}`,
       
-      // Run configuration
-      runOn: {
-        type: 'manual', // ไม่ใช่ scheduled
+      // ✅ FIXED: Added billing configuration
+      billing: {
+        deploymentPlan: 'nf-compute-20', // or 'nf-compute-100', 'nf-compute-200'
       },
       
-      // Use same image as Ollama service
+      // Run configuration
+      runOn: {
+        type: 'manual',
+      },
+      
+      // Job specification
       job: {
-        // ใช้ image ของ Ollama service ที่มี Python + training script
-        dockerImage: {
-          // Pull from existing service
-          reference: `nf-image:${OLLAMA_SERVICE_ID}`,
+        // Docker configuration
+        docker: {
+          configType: 'default',
         },
         
-        // Run training script
+        // Build configuration - use existing Ollama service image
+        build: {
+          type: 'service',
+          settings: {
+            projectId: OLLAMA_PROJECT_ID,
+            serviceId: OLLAMA_SERVICE_ID,
+          },
+        },
+        
+        // Runtime command
         command: [
           '/bin/bash',
           '-c',
@@ -96,18 +104,30 @@ export async function POST(request: NextRequest) {
         ],
         
         // Environment variables
-        env: {
-          POSTGRES_URI: connectionString,
-          USER_ID: user.id,
-          ADAPTER_VERSION: adapterVersion,
-          OUTPUT_DIR: `/models/adapters/${user.id}/${adapterVersion}`,
-        },
+        env: [
+          {
+            variable: 'POSTGRES_URI',
+            value: connectionString,
+          },
+          {
+            variable: 'USER_ID',
+            value: user.id,
+          },
+          {
+            variable: 'ADAPTER_VERSION',
+            value: adapterVersion,
+          },
+          {
+            variable: 'OUTPUT_DIR',
+            value: `/models/adapters/${user.id}/${adapterVersion}`,
+          },
+        ],
         
         // Resource limits
         resources: {
           limits: {
             memory: '8Gi',
-            cpu: '4000m', // 4 cores
+            cpu: '4000m',
           },
           requests: {
             memory: '4Gi',
@@ -116,11 +136,13 @@ export async function POST(request: NextRequest) {
         },
         
         // Job settings
-        backoffLimit: 0, // ไม่ retry ถ้า fail
-        activeDeadlineSeconds: 3600, // 1 hour timeout
+        backoffLimit: 0,
+        activeDeadlineSeconds: 3600,
       },
     };
 
+    console.log('📤 Sending job request to Northflank...');
+    
     const jobResponse = await fetch(
       `https://api.northflank.com/v1/projects/${OLLAMA_PROJECT_ID}/jobs`,
       {
@@ -136,13 +158,17 @@ export async function POST(request: NextRequest) {
     if (!jobResponse.ok) {
       const errorText = await jobResponse.text();
       console.error('❌ Job creation failed:', errorText);
-      throw new Error(`Failed to create job: ${jobResponse.status}`);
+      throw new Error(`Failed to create job: ${jobResponse.status} - ${errorText}`);
     }
 
     const jobData = await jobResponse.json();
     const jobId = jobData.data?.id;
 
-    console.log(`✅ Job created: ${jobId}`);
+    if (!jobId) {
+      throw new Error('No job ID returned from Northflank');
+    }
+
+    console.log(`✅ Job created successfully: ${jobId}`);
 
     // 💾 Update training status
     await db.user.update({
@@ -215,19 +241,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Get latest job if training
-    let latestJob = null;
-    if (user.loraTrainingStatus === 'training') {
-      // Poll job status from Northflank
-      // (implementation below)
-    }
-
     return NextResponse.json({
       status: user.loraTrainingStatus || 'idle',
       currentVersion: user.loraAdapterVersion,
       lastTrainedAt: user.loraLastTrainedAt,
       error: user.loraTrainingError,
-      latestJob,
       stats: {
         goodChannel: user.goodChannelCount,
         badChannel: user.badChannelCount,
@@ -244,7 +262,8 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// ===== Helper: Auto-approve data =====
+// ===== Helper Functions =====
+
 async function autoApproveData(connectionString: string, userId: string) {
   const { Client } = require('pg');
   const client = new Client({ connectionString });
@@ -252,7 +271,6 @@ async function autoApproveData(connectionString: string, userId: string) {
   try {
     await client.connect();
     
-    // Approve good channel (high quality)
     await client.query(`
       UPDATE user_data_schema.stm_good
       SET approved_for_consolidation = TRUE
@@ -261,7 +279,6 @@ async function autoApproveData(connectionString: string, userId: string) {
         AND alignment_score >= 0.7
     `, [userId]);
     
-    // Approve bad channel (with counterfactuals)
     await client.query(`
       UPDATE user_data_schema.stm_bad
       SET approved_for_shadow_learning = TRUE
@@ -270,7 +287,6 @@ async function autoApproveData(connectionString: string, userId: string) {
         AND safe_counterfactual IS NOT NULL
     `, [userId]);
     
-    // Approve MCL chains
     await client.query(`
       UPDATE user_data_schema.mcl_chains
       SET approved_for_training = TRUE
@@ -284,7 +300,6 @@ async function autoApproveData(connectionString: string, userId: string) {
   }
 }
 
-// ===== Helper: Monitor job status =====
 async function monitorJobStatus(
   userId: string, 
   jobId: string, 
@@ -293,15 +308,14 @@ async function monitorJobStatus(
 ) {
   console.log(`🔍 Monitoring job ${jobId}...`);
   
-  const maxAttempts = 60; // 30 minutes (30s interval)
+  const maxAttempts = 60;
   let attempts = 0;
   
   while (attempts < maxAttempts) {
-    await new Promise(resolve => setTimeout(resolve, 30000)); // 30s
+    await new Promise(resolve => setTimeout(resolve, 30000));
     attempts++;
     
     try {
-      // Get job status
       const jobResponse = await fetch(
         `https://api.northflank.com/v1/projects/${OLLAMA_PROJECT_ID}/jobs/${jobId}`,
         {
@@ -324,7 +338,6 @@ async function monitorJobStatus(
       if (status === 'SUCCEEDED') {
         console.log('✅ Training completed successfully!');
         
-        // Update user status
         await db.user.update({
           where: { id: userId },
           data: {
@@ -335,7 +348,6 @@ async function monitorJobStatus(
           },
         });
         
-        // Update training job log
         await updateTrainingJobStatus(connectionString, jobId, {
           status: 'completed',
           completedAt: new Date(),
@@ -381,16 +393,9 @@ async function monitorJobStatus(
         updatedAt: new Date(),
       },
     });
-    
-    await updateTrainingJobStatus(connectionString, jobId, {
-      status: 'failed',
-      errorMessage: 'Timeout',
-      completedAt: new Date(),
-    });
   }
 }
 
-// ===== Helper: Log training job =====
 async function logTrainingJob(
   connectionString: string,
   data: {
@@ -427,7 +432,6 @@ async function logTrainingJob(
   }
 }
 
-// ===== Helper: Update training job status =====
 async function updateTrainingJobStatus(
   connectionString: string,
   jobId: string,
@@ -450,37 +454,37 @@ async function updateTrainingJobStatus(
     let paramIndex = 1;
     
     if (update.status) {
-      setClauses.push(`status = ${paramIndex++}`);
+      setClauses.push(`status = $${paramIndex++}`);
       values.push(update.status);
     }
     
     if (update.completedAt) {
-      setClauses.push(`completed_at = ${paramIndex++}`);
+      setClauses.push(`completed_at = $${paramIndex++}`);
       values.push(update.completedAt);
     }
     
     if (update.trainingLoss) {
-      setClauses.push(`training_loss = ${paramIndex++}`);
+      setClauses.push(`training_loss = $${paramIndex++}`);
       values.push(update.trainingLoss);
     }
     
     if (update.finalMetrics) {
-      setClauses.push(`final_metrics = ${paramIndex++}`);
+      setClauses.push(`final_metrics = $${paramIndex++}`);
       values.push(JSON.stringify(update.finalMetrics));
     }
     
     if (update.errorMessage) {
-      setClauses.push(`error_message = ${paramIndex++}`);
+      setClauses.push(`error_message = $${paramIndex++}`);
       values.push(update.errorMessage);
     }
     
     setClauses.push(`updated_at = NOW()`);
-    values.push(jobId); // WHERE clause
+    values.push(jobId);
     
     await client.query(`
       UPDATE user_data_schema.training_jobs
       SET ${setClauses.join(', ')}
-      WHERE job_id = ${paramIndex}
+      WHERE job_id = $${paramIndex}
     `, values);
     
     console.log('✅ Training job status updated');
@@ -489,7 +493,6 @@ async function updateTrainingJobStatus(
   }
 }
 
-// ===== Helper: Get Postgres connection =====
 async function getPostgresConnectionString(projectId: string): Promise<string | null> {
   try {
     const addonsResponse = await fetch(
