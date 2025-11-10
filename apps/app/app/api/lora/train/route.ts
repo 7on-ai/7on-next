@@ -285,7 +285,12 @@ async function autoApproveData(connectionString: string, userId: string) {
 }
 
 // ===== Helper: Monitor job status =====
-async function monitorJobStatus(userId: string, jobId: string, adapterVersion: string) {
+async function monitorJobStatus(
+  userId: string, 
+  jobId: string, 
+  adapterVersion: string,
+  connectionString: string
+) {
   console.log(`🔍 Monitoring job ${jobId}...`);
   
   const maxAttempts = 60; // 30 minutes (30s interval)
@@ -319,6 +324,7 @@ async function monitorJobStatus(userId: string, jobId: string, adapterVersion: s
       if (status === 'SUCCEEDED') {
         console.log('✅ Training completed successfully!');
         
+        // Update user status
         await db.user.update({
           where: { id: userId },
           data: {
@@ -329,17 +335,31 @@ async function monitorJobStatus(userId: string, jobId: string, adapterVersion: s
           },
         });
         
+        // Update training job log
+        await updateTrainingJobStatus(connectionString, jobId, {
+          status: 'completed',
+          completedAt: new Date(),
+        });
+        
         break;
       } else if (status === 'FAILED' || status === 'ERROR') {
         console.error('❌ Training failed');
+        
+        const errorMessage = jobData.data?.status?.message || 'Training job failed';
         
         await db.user.update({
           where: { id: userId },
           data: {
             loraTrainingStatus: 'failed',
-            loraTrainingError: 'Training job failed. Please check logs.',
+            loraTrainingError: errorMessage,
             updatedAt: new Date(),
           },
+        });
+        
+        await updateTrainingJobStatus(connectionString, jobId, {
+          status: 'failed',
+          errorMessage,
+          completedAt: new Date(),
         });
         
         break;
@@ -361,6 +381,111 @@ async function monitorJobStatus(userId: string, jobId: string, adapterVersion: s
         updatedAt: new Date(),
       },
     });
+    
+    await updateTrainingJobStatus(connectionString, jobId, {
+      status: 'failed',
+      errorMessage: 'Timeout',
+      completedAt: new Date(),
+    });
+  }
+}
+
+// ===== Helper: Log training job =====
+async function logTrainingJob(
+  connectionString: string,
+  data: {
+    userId: string;
+    jobId: string;
+    jobName: string;
+    adapterVersion: string;
+    datasetComposition: any;
+    totalSamples: number;
+  }
+) {
+  const { Client } = require('pg');
+  const client = new Client({ connectionString });
+  
+  try {
+    await client.connect();
+    
+    await client.query(`
+      INSERT INTO user_data_schema.training_jobs
+      (user_id, job_id, job_name, adapter_version, status, dataset_composition, total_samples, started_at)
+      VALUES ($1, $2, $3, $4, 'running', $5, $6, NOW())
+    `, [
+      data.userId,
+      data.jobId,
+      data.jobName,
+      data.adapterVersion,
+      JSON.stringify(data.datasetComposition),
+      data.totalSamples,
+    ]);
+    
+    console.log('✅ Training job logged');
+  } finally {
+    await client.end();
+  }
+}
+
+// ===== Helper: Update training job status =====
+async function updateTrainingJobStatus(
+  connectionString: string,
+  jobId: string,
+  update: {
+    status?: string;
+    completedAt?: Date;
+    trainingLoss?: number;
+    finalMetrics?: any;
+    errorMessage?: string;
+  }
+) {
+  const { Client } = require('pg');
+  const client = new Client({ connectionString });
+  
+  try {
+    await client.connect();
+    
+    const setClauses: string[] = [];
+    const values: any[] = [];
+    let paramIndex = 1;
+    
+    if (update.status) {
+      setClauses.push(`status = ${paramIndex++}`);
+      values.push(update.status);
+    }
+    
+    if (update.completedAt) {
+      setClauses.push(`completed_at = ${paramIndex++}`);
+      values.push(update.completedAt);
+    }
+    
+    if (update.trainingLoss) {
+      setClauses.push(`training_loss = ${paramIndex++}`);
+      values.push(update.trainingLoss);
+    }
+    
+    if (update.finalMetrics) {
+      setClauses.push(`final_metrics = ${paramIndex++}`);
+      values.push(JSON.stringify(update.finalMetrics));
+    }
+    
+    if (update.errorMessage) {
+      setClauses.push(`error_message = ${paramIndex++}`);
+      values.push(update.errorMessage);
+    }
+    
+    setClauses.push(`updated_at = NOW()`);
+    values.push(jobId); // WHERE clause
+    
+    await client.query(`
+      UPDATE user_data_schema.training_jobs
+      SET ${setClauses.join(', ')}
+      WHERE job_id = ${paramIndex}
+    `, values);
+    
+    console.log('✅ Training job status updated');
+  } finally {
+    await client.end();
   }
 }
 
