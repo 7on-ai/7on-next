@@ -1,8 +1,8 @@
 // apps/app/lib/postgres-setup.ts
 /**
- * ✅ Complete Postgres Setup with Two-Channel + MCL
+ * ✅ Complete Postgres Setup with Two-Channel + MCL + Training Jobs
  * รันเมื่อ user กด "Setup Database" ครั้งแรก
- * สร้างทั้ง semantic memory (เดิม) + two-channel tables (ใหม่)
+ * สร้างทั้ง semantic memory (เดิม) + two-channel tables (ใหม่) + training jobs tracking
  */
 
 import { Client } from 'pg';
@@ -166,7 +166,39 @@ export async function initializeUserPostgresSchema(
     `);
     console.log('✅ Table created: semantic_memory (Consolidated)');
     
-    // 3.6 Gating Logs
+    // 3.6 Training Jobs
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_data_schema.training_jobs (
+        id BIGSERIAL PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        
+        job_id TEXT NOT NULL,
+        job_name TEXT NOT NULL,
+        adapter_version TEXT NOT NULL,
+        
+        status TEXT DEFAULT 'pending',
+        started_at TIMESTAMPTZ,
+        completed_at TIMESTAMPTZ,
+        
+        dataset_composition JSONB DEFAULT '{}',
+        total_samples INT DEFAULT 0,
+        
+        training_loss FLOAT,
+        final_metrics JSONB DEFAULT '{}',
+        
+        detectors_trained TEXT[],
+        
+        error_message TEXT,
+        retry_count INT DEFAULT 0,
+        
+        metadata JSONB DEFAULT '{}'
+      )
+    `);
+    console.log('✅ Table created: training_jobs');
+    
+    // 3.7 Gating Logs
     await client.query(`
       CREATE TABLE IF NOT EXISTS user_data_schema.gating_logs (
         id BIGSERIAL PRIMARY KEY,
@@ -215,6 +247,12 @@ export async function initializeUserPostgresSchema(
       'CREATE INDEX IF NOT EXISTS idx_gating_logs_user ON user_data_schema.gating_logs(user_id)',
       'CREATE INDEX IF NOT EXISTS idx_gating_logs_decision ON user_data_schema.gating_logs(routing_decision)',
       'CREATE INDEX IF NOT EXISTS idx_gating_logs_created ON user_data_schema.gating_logs(created_at DESC)',
+      
+      // Training jobs indexes
+      'CREATE INDEX IF NOT EXISTS idx_training_jobs_user ON user_data_schema.training_jobs(user_id)',
+      'CREATE INDEX IF NOT EXISTS idx_training_jobs_status ON user_data_schema.training_jobs(status)',
+      'CREATE INDEX IF NOT EXISTS idx_training_jobs_created ON user_data_schema.training_jobs(created_at DESC)',
+      'CREATE INDEX IF NOT EXISTS idx_training_jobs_job_id ON user_data_schema.training_jobs(job_id)',
     ];
     
     for (const indexSql of indexes) {
@@ -261,10 +299,40 @@ export async function initializeUserPostgresSchema(
         EXECUTE FUNCTION user_data_schema.update_updated_at_column()
     `);
     
+    await client.query(`
+      DROP TRIGGER IF EXISTS update_training_jobs_updated_at ON user_data_schema.training_jobs;
+      CREATE TRIGGER update_training_jobs_updated_at 
+        BEFORE UPDATE ON user_data_schema.training_jobs 
+        FOR EACH ROW 
+        EXECUTE FUNCTION user_data_schema.update_updated_at_column()
+    `);
+    
     console.log('✅ Triggers created');
     
     // ========================================
-    // STEP 6: Permissions (if using admin connection)
+    // STEP 6: Views
+    // ========================================
+    
+    await client.query(`
+      CREATE OR REPLACE VIEW user_data_schema.v_latest_training AS
+      SELECT DISTINCT ON (user_id)
+        user_id,
+        job_id,
+        adapter_version,
+        status,
+        started_at,
+        completed_at,
+        total_samples,
+        training_loss,
+        error_message,
+        created_at
+      FROM user_data_schema.training_jobs
+      ORDER BY user_id, created_at DESC
+    `);
+    console.log('✅ View created: v_latest_training');
+    
+    // ========================================
+    // STEP 7: Permissions (if using admin connection)
     // ========================================
     
     if (adminConnectionString && adminConnectionString !== connectionString) {
@@ -283,7 +351,7 @@ export async function initializeUserPostgresSchema(
       }
     }
     
-    console.log('🎉 Complete schema initialization (Semantic Memory + Two-Channel + MCL) completed!');
+    console.log('🎉 Complete schema initialization (Semantic Memory + Two-Channel + MCL + Training Jobs) completed!');
     return true;
     
   } catch (error) {
