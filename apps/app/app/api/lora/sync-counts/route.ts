@@ -1,4 +1,4 @@
-// apps/app/app/api/lora/sync-counts/route.ts - FIXED
+// apps/app/app/api/lora/sync-counts/route.ts - FIXED: Count from correct tables
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { database as db } from '@repo/database';
@@ -41,94 +41,123 @@ export async function POST(request: NextRequest) {
     await client.connect();
 
     try {
-      // ✅ FIXED: Count from correct channels
+      console.log(`📊 Syncing counts for user: ${user.id}`);
+
+      // ✅ Count from correct channel tables
       
-      // Count Good Channel (stm_good + memory_embeddings with good routing)
+      // 1. Good Channel (stm_good only - approved data)
       const goodResult = await client.query(`
         SELECT COUNT(*) as count 
         FROM user_data_schema.stm_good 
         WHERE user_id = $1
       `, [user.id]);
 
-      // Count memories with good metadata (optional)
-      const goodMemoryResult = await client.query(`
-        SELECT COUNT(*) as count 
-        FROM user_data_schema.memory_embeddings 
-        WHERE user_id = $1
-          AND (metadata->>'gating_routing' = 'good' OR metadata->>'gating_routing' IS NULL)
-      `, [user.id]);
-
-      // Count Bad Channel (stm_bad)
+      // 2. Bad Channel (stm_bad only - flagged content with counterfactuals)
       const badResult = await client.query(`
         SELECT COUNT(*) as count 
         FROM user_data_schema.stm_bad 
         WHERE user_id = $1
       `, [user.id]);
 
-      // Count bad memories
-      const badMemoryResult = await client.query(`
-        SELECT COUNT(*) as count 
-        FROM user_data_schema.memory_embeddings 
-        WHERE user_id = $1
-          AND metadata->>'gating_routing' = 'bad'
-      `, [user.id]);
-
-      // Count MCL Chains
+      // 3. MCL Chains (moral reasoning chains)
       const mclResult = await client.query(`
         SELECT COUNT(*) as count 
         FROM user_data_schema.mcl_chains 
         WHERE user_id = $1
       `, [user.id]);
 
-      // Count Review Channel (optional)
+      // 4. Review Queue (content pending review)
       const reviewResult = await client.query(`
         SELECT COUNT(*) as count 
         FROM user_data_schema.stm_review 
         WHERE user_id = $1
       `, [user.id]);
 
+      // 5. Total memory_embeddings (for reference)
+      const memoryResult = await client.query(`
+        SELECT COUNT(*) as count 
+        FROM user_data_schema.memory_embeddings 
+        WHERE user_id = $1
+      `, [user.id]);
+
       // Parse counts
       const goodCount = parseInt(goodResult.rows[0]?.count || '0');
-      const goodMemoryCount = parseInt(goodMemoryResult.rows[0]?.count || '0');
       const badCount = parseInt(badResult.rows[0]?.count || '0');
-      const badMemoryCount = parseInt(badMemoryResult.rows[0]?.count || '0');
       const mclCount = parseInt(mclResult.rows[0]?.count || '0');
       const reviewCount = parseInt(reviewResult.rows[0]?.count || '0');
+      const memoryCount = parseInt(memoryResult.rows[0]?.count || '0');
 
-      const totalGood = goodCount + goodMemoryCount;
-      const totalBad = badCount + badMemoryCount;
-
-      console.log('📊 Synced counts:', {
-        good: { stm: goodCount, memory: goodMemoryCount, total: totalGood },
-        bad: { stm: badCount, memory: badMemoryCount, total: totalBad },
+      console.log('📊 Counts from channels:', {
+        good: goodCount,
+        bad: badCount,
         mcl: mclCount,
         review: reviewCount,
+        memory_embeddings: memoryCount,
       });
 
-      // Update Prisma database
+      // ✅ Get approved counts for training
+      const approvedGoodResult = await client.query(`
+        SELECT COUNT(*) as count 
+        FROM user_data_schema.stm_good 
+        WHERE user_id = $1 
+          AND approved_for_consolidation = TRUE
+      `, [user.id]);
+
+      const approvedBadResult = await client.query(`
+        SELECT COUNT(*) as count 
+        FROM user_data_schema.stm_bad 
+        WHERE user_id = $1 
+          AND approved_for_shadow_learning = TRUE
+          AND safe_counterfactual IS NOT NULL
+      `, [user.id]);
+
+      const approvedMclResult = await client.query(`
+        SELECT COUNT(*) as count 
+        FROM user_data_schema.mcl_chains 
+        WHERE user_id = $1 
+          AND approved_for_training = TRUE
+      `, [user.id]);
+
+      const approvedGood = parseInt(approvedGoodResult.rows[0]?.count || '0');
+      const approvedBad = parseInt(approvedBadResult.rows[0]?.count || '0');
+      const approvedMcl = parseInt(approvedMclResult.rows[0]?.count || '0');
+
+      console.log('✅ Approved counts:', {
+        good: approvedGood,
+        bad: approvedBad,
+        mcl: approvedMcl,
+      });
+
+      // Update Prisma database with TOTAL counts (not just approved)
       await db.user.update({
         where: { id: user.id },
         data: {
-          goodChannelCount: totalGood,
-          badChannelCount: totalBad,
+          goodChannelCount: goodCount,
+          badChannelCount: badCount,
           mclChainCount: mclCount,
           updatedAt: new Date(),
         },
       });
 
+      console.log('✅ Counts synced to Prisma');
+
       return NextResponse.json({
         success: true,
         counts: {
-          goodChannel: totalGood,
-          badChannel: totalBad,
+          goodChannel: goodCount,
+          badChannel: badCount,
           mclChains: mclCount,
           reviewQueue: reviewCount,
-          total: totalGood + totalBad + mclCount,
+          memoryEmbeddings: memoryCount,
+          total: goodCount + badCount + mclCount,
         },
-        breakdown: {
-          good: { stm: goodCount, memory: goodMemoryCount },
-          bad: { stm: badCount, memory: badMemoryCount },
+        approved: {
+          good: approvedGood,
+          bad: approvedBad,
+          mcl: approvedMcl,
+          total: approvedGood + approvedBad + approvedMcl,
         },
+        message: `Synced ${goodCount + badCount + mclCount} total records`,
       });
 
     } finally {
