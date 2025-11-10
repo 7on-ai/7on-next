@@ -45,6 +45,7 @@ export function LoraTrainingComplete({ user }: { user: User }) {
   const [loading, setLoading] = useState(false);
   const [training, setTraining] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [progress, setProgress] = useState(0);
   const [mounted, setMounted] = useState(false);
 
@@ -136,6 +137,34 @@ export function LoraTrainingComplete({ user }: { user: User }) {
       alert(`Failed to start training: ${(error as Error).message}`);
     } finally {
       setTraining(false);
+    }
+  };
+
+  const cancelTraining = async () => {
+    if (!confirm('Cancel training?\n\nThis will stop the current training process.')) {
+      return;
+    }
+
+    try {
+      setCancelling(true);
+      
+      const response = await fetch('/api/lora/train', {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        alert('✅ Training cancelled successfully!');
+        await fetchStatus();
+        setProgress(0);
+      } else {
+        alert(`❌ Error: ${data.error}`);
+      }
+    } catch (error) {
+      alert(`Failed to cancel training: ${(error as Error).message}`);
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -402,24 +431,48 @@ export function LoraTrainingComplete({ user }: { user: User }) {
                 }
               </p>
             </div>
-            <Button
-              onClick={startTraining}
-              disabled={!canTrain || training || isTraining || loading}
-              size="lg"
-              className="w-full sm:w-auto"
-            >
-              {training || isTraining ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Training...
-                </>
-              ) : (
-                <>
-                  <Zap className="h-4 w-4 mr-2" />
-                  Start Training
-                </>
+            <div className="flex gap-2 w-full sm:w-auto">
+              <Button
+                onClick={startTraining}
+                disabled={!canTrain || training || isTraining || loading}
+                size="lg"
+                className="flex-1 sm:flex-none"
+              >
+                {training || isTraining ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Training...
+                  </>
+                ) : (
+                  <>
+                    <Zap className="h-4 w-4 mr-2" />
+                    Start Training
+                  </>
+                )}
+              </Button>
+              
+              {isTraining && (
+                <Button
+                  onClick={cancelTraining}
+                  disabled={cancelling || loading}
+                  size="lg"
+                  variant="destructive"
+                  className="flex-1 sm:flex-none"
+                >
+                  {cancelling ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Cancelling...
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="h-4 w-4 mr-2" />
+                      Cancel
+                    </>
+                  )}
+                </Button>
               )}
-            </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
