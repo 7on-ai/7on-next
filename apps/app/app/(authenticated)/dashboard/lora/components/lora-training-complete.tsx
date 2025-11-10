@@ -46,18 +46,18 @@ export function LoraTrainingComplete({ user }: { user: User }) {
   const [training, setTraining] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     fetchStatus();
     
-    // Poll if training
     const interval = setInterval(() => {
       if (status?.status === 'training') {
         fetchStatus();
-        // Simulate progress
         setProgress(prev => Math.min(prev + 2, 95));
       }
-    }, 30000); // Every 30s
+    }, 30000);
 
     return () => clearInterval(interval);
   }, [status?.status]);
@@ -139,14 +139,18 @@ export function LoraTrainingComplete({ user }: { user: User }) {
     }
   };
 
-  // Check if ready to train
   const totalData = user.goodChannelCount + user.badChannelCount + user.mclChainCount;
   const canTrain = user.postgresSchemaInitialized && totalData >= 10;
   const isTraining = status?.status === 'training' || user.loraTrainingStatus === 'training';
 
+  const formatDate = (date: string | Date | null) => {
+    if (!date) return 'Never';
+    if (!mounted) return '...';
+    return new Date(date).toLocaleString();
+  };
+
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
-      {/* Header */}
       <div>
         <h1 className="text-3xl font-bold flex items-center gap-2">
           <Zap className="h-8 w-8 text-yellow-500" />
@@ -157,7 +161,6 @@ export function LoraTrainingComplete({ user }: { user: User }) {
         </p>
       </div>
 
-      {/* Prerequisites Check */}
       {!user.postgresSchemaInitialized && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -167,7 +170,6 @@ export function LoraTrainingComplete({ user }: { user: User }) {
         </Alert>
       )}
 
-      {/* Training Status Card */}
       <Card className={
         isTraining ? 'border-blue-500 shadow-lg' :
         status?.status === 'completed' ? 'border-green-500' :
@@ -190,7 +192,6 @@ export function LoraTrainingComplete({ user }: { user: User }) {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {/* Status Grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
                 <p className="text-sm text-muted-foreground">Status</p>
@@ -207,10 +208,7 @@ export function LoraTrainingComplete({ user }: { user: User }) {
               <div>
                 <p className="text-sm text-muted-foreground">Last Trained</p>
                 <p className="text-sm">
-                  {status?.lastTrainedAt || user.loraLastTrainedAt
-                    ? new Date(status?.lastTrainedAt || user.loraLastTrainedAt!).toLocaleString()
-                    : 'Never'
-                  }
+                  {formatDate(status?.lastTrainedAt || user.loraLastTrainedAt)}
                 </p>
               </div>
               <div>
@@ -221,7 +219,6 @@ export function LoraTrainingComplete({ user }: { user: User }) {
               </div>
             </div>
 
-            {/* Progress Bar (if training) */}
             {isTraining && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-sm">
@@ -235,7 +232,6 @@ export function LoraTrainingComplete({ user }: { user: User }) {
               </div>
             )}
 
-            {/* Error */}
             {(status?.error || user.loraTrainingError) && (
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
@@ -245,7 +241,6 @@ export function LoraTrainingComplete({ user }: { user: User }) {
               </Alert>
             )}
 
-            {/* Success Message */}
             {status?.status === 'completed' && (
               <Alert className="border-green-200 dark:border-green-800">
                 <CheckCircle2 className="h-4 w-4 text-green-600" />
@@ -258,7 +253,6 @@ export function LoraTrainingComplete({ user }: { user: User }) {
         </CardContent>
       </Card>
 
-      {/* Data Composition Card */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
@@ -283,7 +277,6 @@ export function LoraTrainingComplete({ user }: { user: User }) {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {/* Good Channel */}
             <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/10 rounded-lg">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="h-5 w-5 text-green-600" />
@@ -300,7 +293,6 @@ export function LoraTrainingComplete({ user }: { user: User }) {
               </div>
             </div>
 
-            {/* Bad Channel */}
             <div className="flex items-center justify-between p-3 bg-orange-50 dark:bg-orange-900/10 rounded-lg">
               <div className="flex items-center gap-2">
                 <Shield className="h-5 w-5 text-orange-600" />
@@ -317,7 +309,6 @@ export function LoraTrainingComplete({ user }: { user: User }) {
               </div>
             </div>
 
-            {/* MCL Chains */}
             <div className="flex items-center justify-between p-3 bg-purple-50 dark:bg-purple-900/10 rounded-lg">
               <div className="flex items-center gap-2">
                 <Brain className="h-5 w-5 text-purple-600" />
@@ -334,7 +325,6 @@ export function LoraTrainingComplete({ user }: { user: User }) {
               </div>
             </div>
 
-            {/* Total */}
             <div className="pt-4 border-t">
               <div className="flex items-center justify-between">
                 <p className="font-semibold">Total Training Data</p>
@@ -352,7 +342,6 @@ export function LoraTrainingComplete({ user }: { user: User }) {
         </CardContent>
       </Card>
 
-      {/* How It Works */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -399,7 +388,6 @@ export function LoraTrainingComplete({ user }: { user: User }) {
         </CardContent>
       </Card>
 
-      {/* Action Button */}
       <Card>
         <CardContent className="pt-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -436,7 +424,6 @@ export function LoraTrainingComplete({ user }: { user: User }) {
         </CardContent>
       </Card>
 
-      {/* Technical Details */}
       <Card className="border-dashed">
         <CardHeader>
           <CardTitle className="text-sm flex items-center gap-2">
