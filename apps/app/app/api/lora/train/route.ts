@@ -1,16 +1,18 @@
 // apps/app/app/api/lora/train/route.ts
-// ✅ FIXED: Added cancel functionality and improved monitoring
+// ✅ FIXED: Proper Ollama service connection + Better error handling
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { database as db } from '@repo/database';
 
 const NORTHFLANK_API_TOKEN = process.env.NORTHFLANK_API_TOKEN!;
 const OLLAMA_PROJECT_ID = process.env.OLLAMA_PROJECT_ID!;
-const OLLAMA_SERVICE_ID = process.env.OLLAMA_SERVICE_ID || 'ollama';
 
-// ✅ Internal service URL (from Northflank)
-const OLLAMA_INTERNAL_URL = 'http://train--ollama--fppvxj4w99rz.code.run';
-const OLLAMA_TRAINING_ENDPOINT = `${OLLAMA_INTERNAL_URL}/api/train`;
+// ✅ FIX 1: Use INTERNAL URL (not external)
+// Internal services in Northflank can talk via: http://SERVICE_ID--PROJECT_ID.code.run
+const OLLAMA_SERVICE_ID = process.env.OLLAMA_SERVICE_ID || 'ollama';
+const OLLAMA_INTERNAL_URL = `http://${OLLAMA_SERVICE_ID}--${OLLAMA_PROJECT_ID}.code.run`;
+
+console.log('🔗 Ollama Training Endpoint:', OLLAMA_INTERNAL_URL);
 
 // ===== POST: Start Training =====
 export async function POST(request: NextRequest) {
@@ -70,7 +72,20 @@ export async function POST(request: NextRequest) {
     const adapterVersion = `v${Date.now()}`;
     const trainingId = `train-${user.id.slice(0, 8)}-${adapterVersion}`;
 
-    console.log(`🚀 Starting training via Ollama service: ${trainingId}`);
+    console.log(`🚀 Starting training: ${trainingId}`);
+
+    // ✅ FIX 2: Check Ollama health BEFORE starting
+    const healthCheck = await checkOllamaHealth();
+    
+    if (!healthCheck.healthy) {
+      console.error('❌ Ollama service not ready:', healthCheck.error);
+      
+      return NextResponse.json({
+        error: 'Training service not available',
+        details: healthCheck.error,
+        suggestion: 'Please wait a few minutes and try again. The training service may be starting up.',
+      }, { status: 503 });
+    }
 
     // ✅ Update status to training immediately
     await db.user.update({
@@ -101,7 +116,8 @@ export async function POST(request: NextRequest) {
     console.log(`📤 Sending training request to Ollama service...`);
     
     try {
-      const trainingResponse = await fetch(OLLAMA_TRAINING_ENDPOINT, {
+      // ✅ FIX 3: Use internal URL with proper timeout
+      const trainingResponse = await fetch(`${OLLAMA_INTERNAL_URL}:5000/api/train`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -113,25 +129,19 @@ export async function POST(request: NextRequest) {
           postgres_uri: connectionString,
           base_model: 'mistral',
           output_dir: `/models/adapters/${user.id}/${adapterVersion}`,
-          dataset_composition: {
-            good_channel: user.goodChannelCount,
-            bad_channel: user.badChannelCount,
-            mcl_chains: user.mclChainCount,
-          },
-          hyperparameters: {
-            learning_rate: 2e-4,
-            batch_size: 4,
-            num_epochs: 3,
-            lora_rank: 8,
-            lora_alpha: 16,
-          },
         }),
+        signal: AbortSignal.timeout(30000), // 30s timeout
       });
 
       if (!trainingResponse.ok) {
         const errorText = await trainingResponse.text();
-        console.error('❌ Ollama training request failed:', errorText);
-        throw new Error(`Training request failed: ${trainingResponse.status}`);
+        console.error('❌ Ollama training request failed:', {
+          status: trainingResponse.status,
+          statusText: trainingResponse.statusText,
+          body: errorText,
+        });
+        
+        throw new Error(`Training service error: ${trainingResponse.status} - ${errorText}`);
       }
 
       const trainingData = await trainingResponse.json();
@@ -150,7 +160,7 @@ export async function POST(request: NextRequest) {
         status: 'training',
         trainingId,
         adapterVersion,
-        message: 'Training started on Ollama service. This will take 10-30 minutes.',
+        message: 'Training started successfully',
         estimatedTime: '10-30 minutes',
         stats: {
           good: user.goodChannelCount,
@@ -260,7 +270,6 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // ตรวจสอบว่ากำลัง training อยู่หรือไม่
     if (user.loraTrainingStatus !== 'training') {
       return NextResponse.json({ 
         error: 'No training in progress',
@@ -270,7 +279,6 @@ export async function DELETE(request: NextRequest) {
 
     console.log(`🛑 Cancelling training for user ${user.id}`);
 
-    // อัปเดตสถานะเป็น cancelled
     await db.user.update({
       where: { id: user.id },
       data: {
@@ -280,7 +288,6 @@ export async function DELETE(request: NextRequest) {
       },
     });
 
-    // อัปเดต training job ในฐานข้อมูล
     const connectionString = await getPostgresConnectionString(user.northflankProjectId!);
     if (connectionString) {
       const { Client } = require('pg');
@@ -289,7 +296,6 @@ export async function DELETE(request: NextRequest) {
       try {
         await client.connect();
         
-        // ✅ แก้ไข SQL query - ใช้ subquery แทน ORDER BY ใน UPDATE
         await client.query(`
           UPDATE user_data_schema.training_jobs 
           SET 
@@ -307,39 +313,10 @@ export async function DELETE(request: NextRequest) {
           )
         `, [user.id]);
         
-        console.log('✅ Training job status updated to cancelled');
-        
-      } catch (dbError) {
-        console.error('⚠️ Database update error:', dbError);
-        // ไม่ throw error เพราะเราอัปเดต Prisma สำเร็จแล้ว
       } finally {
         await client.end();
       }
     }
-
-    // พยายามหยุด training บน Ollama service (optional)
-    try {
-      const trainingId = `train-${user.id.slice(0, 8)}`;
-      
-      await fetch(`${OLLAMA_INTERNAL_URL}/api/train/cancel`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          training_id: trainingId,
-          user_id: user.id,
-        }),
-        signal: AbortSignal.timeout(5000),
-      }).catch(err => {
-        console.warn('⚠️ Could not notify Ollama service:', err.message);
-      });
-    } catch (ollamaError) {
-      console.warn('⚠️ Ollama cancel notification failed:', ollamaError);
-      // ไม่ throw error เพราะเราได้อัปเดตสถานะใน DB แล้ว
-    }
-
-    console.log('✅ Training cancelled successfully');
 
     return NextResponse.json({
       success: true,
@@ -358,6 +335,36 @@ export async function DELETE(request: NextRequest) {
 
 // ===== Helper Functions =====
 
+// ✅ FIX 4: Add health check function
+async function checkOllamaHealth(): Promise<{ healthy: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${OLLAMA_INTERNAL_URL}:5000/health`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!response.ok) {
+      return {
+        healthy: false,
+        error: `Service returned ${response.status}`,
+      };
+    }
+
+    const data = await response.json();
+    
+    return {
+      healthy: data.status === 'healthy',
+      error: data.status !== 'healthy' ? 'Service not healthy' : undefined,
+    };
+  } catch (error) {
+    console.error('Health check failed:', error);
+    return {
+      healthy: false,
+      error: (error as Error).message,
+    };
+  }
+}
+
 async function autoApproveData(connectionString: string, userId: string) {
   const { Client } = require('pg');
   const client = new Client({ connectionString });
@@ -365,7 +372,6 @@ async function autoApproveData(connectionString: string, userId: string) {
   try {
     await client.connect();
     
-    // Approve good channel data
     await client.query(`
       UPDATE user_data_schema.stm_good 
       SET approved_for_consolidation = TRUE 
@@ -374,7 +380,6 @@ async function autoApproveData(connectionString: string, userId: string) {
         AND alignment_score >= 0.7
     `, [userId]);
     
-    // Approve bad channel data with counterfactuals
     await client.query(`
       UPDATE user_data_schema.stm_bad 
       SET approved_for_shadow_learning = TRUE 
@@ -383,7 +388,6 @@ async function autoApproveData(connectionString: string, userId: string) {
         AND safe_counterfactual IS NOT NULL
     `, [userId]);
     
-    // Approve MCL chains
     await client.query(`
       UPDATE user_data_schema.mcl_chains 
       SET approved_for_training = TRUE 
@@ -406,24 +410,22 @@ async function monitorTrainingStatus(
 ) {
   console.log(`🔍 Monitoring training ${trainingId}...`);
   
-  const maxAttempts = 60; // 30 minutes (30s interval)
+  const maxAttempts = 60;
   let attempts = 0;
   let consecutiveErrors = 0;
   
   while (attempts < maxAttempts) {
-    await new Promise(resolve => setTimeout(resolve, 30000)); // Wait 30s
+    await new Promise(resolve => setTimeout(resolve, 30000));
     attempts++;
     
     try {
-      // ✅ ตรวจสอบสถานะจาก Prisma DB ก่อน (สำหรับ cancel detection)
       const user = await db.user.findUnique({
         where: { id: userId },
         select: { loraTrainingStatus: true },
       });
 
-      // ถ้าถูกยกเลิกหรือเปลี่ยนสถานะจาก UI หยุด monitoring
       if (!user || user.loraTrainingStatus === 'cancelled') {
-        console.log('🛑 Training cancelled via database');
+        console.log('🛑 Training cancelled');
         break;
       }
 
@@ -432,26 +434,20 @@ async function monitorTrainingStatus(
         break;
       }
 
-      // ✅ ตรวจสอบสถานะจาก Ollama service
       const statusResponse = await fetch(
-        `${OLLAMA_INTERNAL_URL}/api/train/status/${trainingId}`,
+        `${OLLAMA_INTERNAL_URL}:5000/api/train/status/${trainingId}`,
         {
           method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           signal: AbortSignal.timeout(10000),
         }
       );
 
       if (!statusResponse.ok) {
         consecutiveErrors++;
-        console.warn(`⚠️ Cannot get training status (attempt ${attempts}/${maxAttempts}, errors: ${consecutiveErrors})`);
+        console.warn(`⚠️ Cannot get status (${consecutiveErrors}/10)`);
         
-        // ถ้าไม่ได้รับ response 10 ครั้งติดต่อกัน ให้ถือว่าล้มเหลว
         if (consecutiveErrors >= 10) {
-          console.error('❌ Training service not responding (10 consecutive errors)');
-          
           await db.user.update({
             where: { id: userId },
             data: {
@@ -460,30 +456,18 @@ async function monitorTrainingStatus(
               updatedAt: new Date(),
             },
           });
-
-          await updateTrainingJobStatus(connectionString, trainingId, {
-            status: 'failed',
-            errorMessage: 'Training service not responding',
-            completedAt: new Date(),
-          });
-          
           break;
         }
-        
         continue;
       }
 
-      // Reset error counter on success
       consecutiveErrors = 0;
-
       const statusData = await statusResponse.json();
       const status = statusData.status;
       
-      console.log(`📊 Training status: ${status} (attempt ${attempts}/${maxAttempts})`);
+      console.log(`📊 Training status: ${status}`);
 
       if (status === 'completed' || status === 'success') {
-        console.log('✅ Training completed successfully!');
-        
         await db.user.update({
           where: { id: userId },
           data: {
@@ -498,91 +482,57 @@ async function monitorTrainingStatus(
           status: 'completed',
           completedAt: new Date(),
           trainingLoss: statusData.final_loss,
-          finalMetrics: statusData.metrics,
         });
         
         break;
       } 
       else if (status === 'failed' || status === 'error') {
-        console.error('❌ Training failed');
-        
-        const errorMessage = statusData.error || 'Training failed on Ollama service';
-        
         await db.user.update({
           where: { id: userId },
           data: {
             loraTrainingStatus: 'failed',
-            loraTrainingError: errorMessage,
+            loraTrainingError: statusData.error || 'Training failed',
             updatedAt: new Date(),
           },
         });
 
         await updateTrainingJobStatus(connectionString, trainingId, {
           status: 'failed',
-          errorMessage,
+          errorMessage: statusData.error,
           completedAt: new Date(),
         });
         
         break;
-      }
-      else if (status === 'cancelled') {
-        console.log('🛑 Training was cancelled');
-        break;
-      }
-      else if (status === 'training' || status === 'running') {
-        // Still training, continue monitoring
-        console.log(`⏳ Training in progress... (${statusData.progress || 'N/A'})`);
       }
       
     } catch (error) {
       consecutiveErrors++;
-      console.error(`❌ Monitoring error (attempt ${attempts}, errors: ${consecutiveErrors}):`, error);
+      console.error(`❌ Monitoring error (${consecutiveErrors}/10):`, error);
       
-      // ถ้า error มากเกินไป ให้หยุด
       if (consecutiveErrors >= 10) {
-        console.error('❌ Too many consecutive errors, stopping monitoring');
-        
         await db.user.update({
           where: { id: userId },
           data: {
             loraTrainingStatus: 'failed',
-            loraTrainingError: 'Monitoring failed: ' + (error as Error).message,
+            loraTrainingError: 'Monitoring failed',
             updatedAt: new Date(),
           },
         });
-
-        await updateTrainingJobStatus(connectionString, trainingId, {
-          status: 'failed',
-          errorMessage: 'Monitoring failed: ' + (error as Error).message,
-          completedAt: new Date(),
-        });
-        
         break;
       }
     }
   }
   
-  // Timeout handling
   if (attempts >= maxAttempts) {
-    console.error('⏰ Training timeout (30 minutes exceeded)');
-    
     await db.user.update({
       where: { id: userId },
       data: {
         loraTrainingStatus: 'failed',
-        loraTrainingError: 'Training timeout (exceeded 30 minutes)',
+        loraTrainingError: 'Training timeout (30 minutes)',
         updatedAt: new Date(),
       },
     });
-
-    await updateTrainingJobStatus(connectionString, trainingId, {
-      status: 'failed',
-      errorMessage: 'Training timeout',
-      completedAt: new Date(),
-    });
   }
-  
-  console.log(`✅ Monitoring completed for ${trainingId}`);
 }
 
 async function logTrainingJob(
@@ -629,7 +579,6 @@ async function updateTrainingJobStatus(
     status?: string;
     completedAt?: Date;
     trainingLoss?: number;
-    finalMetrics?: any;
     errorMessage?: string;
   }
 ) {
@@ -658,11 +607,6 @@ async function updateTrainingJobStatus(
       values.push(update.trainingLoss);
     }
     
-    if (update.finalMetrics) {
-      setClauses.push(`final_metrics = $${paramIndex++}`);
-      values.push(JSON.stringify(update.finalMetrics));
-    }
-    
     if (update.errorMessage) {
       setClauses.push(`error_message = $${paramIndex++}`);
       values.push(update.errorMessage);
@@ -677,8 +621,6 @@ async function updateTrainingJobStatus(
       WHERE job_id = $${paramIndex}
     `, values);
     
-    console.log('✅ Training job status updated');
-    
   } finally {
     await client.end();
   }
@@ -686,7 +628,6 @@ async function updateTrainingJobStatus(
 
 async function getPostgresConnectionString(projectId: string): Promise<string | null> {
   try {
-    // Get addons list
     const addonsResponse = await fetch(
       `https://api.northflank.com/v1/projects/${projectId}/addons`,
       {
@@ -705,7 +646,6 @@ async function getPostgresConnectionString(projectId: string): Promise<string | 
 
     if (!postgresAddon) return null;
 
-    // Get credentials
     const credentialsResponse = await fetch(
       `https://api.northflank.com/v1/projects/${projectId}/addons/${postgresAddon.id}/credentials`,
       {
