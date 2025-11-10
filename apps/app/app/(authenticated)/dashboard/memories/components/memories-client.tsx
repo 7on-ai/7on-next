@@ -474,54 +474,103 @@ export function MemoriesClient({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-          ) : memories.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Database className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p>No memories yet</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {memories.map((memory) => (
-                <div
-                  key={memory.id}
-                  className="p-4 border rounded-lg hover:bg-muted/50 transition"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm break-words">{memory.content}</p>
-                      
-                      {memory.score !== undefined && (
-                        <div className="mt-2 inline-flex items-center gap-2 px-2 py-1 bg-purple-100 dark:bg-purple-900/30 rounded text-xs">
-                          <Sparkles className="h-3 w-3" />
-                          <span>Similarity: {(memory.score * 100).toFixed(1)}%</span>
-                        </div>
-                      )}
-                      
-                      <div className="mt-2 text-xs text-muted-foreground">
-                        {new Date(memory.created_at).toLocaleString()}
-                      </div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(memory.id)}
-                      disabled={deleting === memory.id}
-                    >
-                      {deleting === memory.id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-4 w-4 text-red-500" />
-                      )}
-                    </Button>
-                  </div>
+{loading ? (
+  <div className="flex items-center justify-center py-12">
+    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+  </div>
+) : error ? (
+  <div className="text-center py-12 text-red-500">
+    <AlertCircle className="h-8 w-8 mx-auto mb-2" />
+    <p className="font-semibold">Error loading memories</p>
+    <p className="text-sm mt-1">{error}</p>
+    <Button onClick={fetchAllMemories} variant="outline" className="mt-4">
+      Try Again
+    </Button>
+  </div>
+) : memories.length === 0 ? (
+  <div className="text-center py-12 text-muted-foreground">
+    <Database className="h-8 w-8 mx-auto mb-2 opacity-50" />
+    <p className="font-semibold">
+      {searchMode === 'semantic' ? 'No matching memories found' : 'No memories yet'}
+    </p>
+    <p className="text-sm">
+      {searchMode === 'semantic' 
+        ? 'Try a different search query' 
+        : 'Add your first memory above'}
+    </p>
+  </div>
+) : (
+  <div className="space-y-4">
+    {memories.map((memory) => (
+      <div
+        key={memory.id}
+        className="p-4 border rounded-lg hover:bg-muted/50 transition"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            {/* Main content */}
+            <p className="text-sm break-words font-medium">{memory.content}</p>
+            
+            {/* Similarity score for semantic search */}
+            {memory.score !== undefined && (
+              <div className="mt-2 inline-flex items-center gap-2 px-2 py-1 bg-purple-100 dark:bg-purple-900/30 rounded text-xs">
+                <Sparkles className="h-3 w-3" />
+                <span className="font-semibold">Similarity:</span>
+                <span>{(memory.score * 100).toFixed(1)}%</span>
+              </div>
+            )}
+            
+            {/* Metadata */}
+            {memory.metadata && Object.keys(memory.metadata).length > 0 && (
+              <details className="mt-2">
+                <summary className="text-xs text-muted-foreground cursor-pointer hover:underline">
+                  View metadata
+                </summary>
+                <pre className="mt-2 text-xs text-muted-foreground bg-muted p-2 rounded overflow-auto">
+                  {JSON.stringify(memory.metadata, null, 2)}
+                </pre>
+              </details>
+            )}
+            
+            {/* ✅ FIXED: Show ID and timestamps */}
+            <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+              <div className="flex items-center gap-1">
+                <span className="font-semibold">ID:</span>
+                <code className="bg-muted px-1 py-0.5 rounded font-mono">
+                  {memory.id.slice(0, 8)}...
+                </code>
+              </div>
+              <div className="flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                <span>{new Date(memory.created_at).toLocaleString()}</span>
+              </div>
+              {memory.user_id && (
+                <div className="flex items-center gap-1">
+                  <span className="opacity-50">User: {memory.user_id.slice(0, 8)}...</span>
                 </div>
-              ))}
+              )}
             </div>
-          )}
+          </div>
+          
+          {/* Delete button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => handleDelete(memory.id)}
+            disabled={deleting === memory.id}
+            className="flex-shrink-0"
+          >
+            {deleting === memory.id ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Trash2 className="h-4 w-4 text-red-500 hover:text-red-600" />
+            )}
+          </Button>
+        </div>
+      </div>
+    ))}
+  </div>
+)}
         </CardContent>
       </Card>
     </div>

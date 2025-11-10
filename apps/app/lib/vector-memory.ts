@@ -13,25 +13,16 @@ export class VectorMemory {
 
   constructor(config: VectorMemoryConfig) {
     this.client = new Client({ connectionString: config.connectionString });
-    
-    // ✅ CRITICAL FIX: Use external URL for Vercel → Northflank communication
-    // Internal URLs (*.internal) only work INSIDE Northflank
     this.ollamaUrl = config.ollamaUrl || process.env.OLLAMA_EXTERNAL_URL || process.env.OLLAMA_URL || 'http://ollama.internal:11434';
-    
-    console.log('🔗 Ollama URL:', this.ollamaUrl.replace(/\/\/.+@/, '//*****@')); // Hide credentials in logs
+    console.log('🔗 Ollama URL:', this.ollamaUrl.replace(/\/\/.+@/, '//*****@'));
   }
 
   async connect() {
     await this.client.connect();
   }
 
-  /**
-   * Generate embedding using Ollama (100% free, self-hosted)
-   */
   private async generateEmbedding(text: string): Promise<number[]> {
     try {
-      console.log(`📡 Calling Ollama at: ${this.ollamaUrl}/api/embeddings`);
-      
       const response = await fetch(`${this.ollamaUrl}/api/embeddings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -39,8 +30,7 @@ export class VectorMemory {
           model: this.embeddingModel,
           prompt: text,
         }),
-        // Add timeout
-        signal: AbortSignal.timeout(30000), // 30 second timeout
+        signal: AbortSignal.timeout(30000),
       });
 
       if (!response.ok) {
@@ -54,15 +44,13 @@ export class VectorMemory {
         throw new Error('Invalid embedding response from Ollama');
       }
       
-      console.log(`✅ Generated ${data.embedding.length}-dim embedding`);
       return data.embedding;
     } catch (error) {
       console.error('❌ Error generating embedding:', error);
       
-      // Better error message
       if (error instanceof Error) {
         if (error.message.includes('ENOTFOUND') || error.message.includes('getaddrinfo')) {
-          throw new Error(`Cannot reach Ollama at ${this.ollamaUrl}. Make sure Ollama service has external access enabled in Northflank.`);
+          throw new Error(`Cannot reach Ollama at ${this.ollamaUrl}. Make sure Ollama service has external access enabled.`);
         }
         if (error.message.includes('ETIMEDOUT') || error.message.includes('timeout')) {
           throw new Error(`Ollama request timeout. Service might be starting or overloaded.`);
@@ -74,32 +62,37 @@ export class VectorMemory {
   }
 
   /**
-   * Add memory with vector embedding (Semantic search enabled)
+   * ✅ FIXED: Add memory with proper user_id
    */
   async addMemory(userId: string, content: string, metadata?: any) {
     try {
-      console.log(`🧠 Adding semantic memory for user ${userId}...`);
+      console.log(`🧠 Adding memory for user ${userId}...`);
       
-      // Generate embedding using Ollama
+      // Validate user_id
+      if (!userId || typeof userId !== 'string') {
+        throw new Error('Invalid user_id');
+      }
+      
+      // Generate embedding
       const embedding = await this.generateEmbedding(content);
       
-      // Validate embedding dimension (should be 768 for nomic-embed-text)
       if (embedding.length !== 768) {
         throw new Error(`Invalid embedding dimension: ${embedding.length}, expected 768`);
       }
       
-      // Convert to pgvector format
       const vectorString = `[${embedding.join(',')}]`;
       
-      // Store in memory_embeddings table with vector
-      await this.client.query(
+      // ✅ Store with user_id
+      const result = await this.client.query(
         `INSERT INTO user_data_schema.memory_embeddings 
          (user_id, content, embedding, metadata) 
-         VALUES ($1, $2, $3::vector, $4)`,
+         VALUES ($1, $2, $3::vector, $4)
+         RETURNING id, created_at`,
         [userId, content, vectorString, JSON.stringify(metadata || {})]
       );
 
-      console.log('✅ Semantic memory added with 768-dim embedding');
+      console.log(`✅ Memory added with ID: ${result.rows[0].id}`);
+      return result.rows[0];
     } catch (error) {
       console.error('❌ Error adding memory:', error);
       throw error;
@@ -107,25 +100,23 @@ export class VectorMemory {
   }
 
   /**
-   * Semantic search using cosine similarity (pgvector)
-   * Finds memories based on MEANING, not just keywords
+   * ✅ FIXED: Search with proper user_id filter
    */
   async searchMemories(userId: string, query: string, limit = 10) {
     try {
-      console.log(`🔍 Semantic search: "${query}"`);
+      console.log(`🔍 Semantic search for user ${userId}: "${query}"`);
       
-      // Generate embedding for query
       const queryEmbedding = await this.generateEmbedding(query);
       const vectorString = `[${queryEmbedding.join(',')}]`;
       
-      // Search using cosine distance (<=>)
-      // Lower distance = more similar
+      // ✅ Filter by user_id
       const result = await this.client.query(
         `SELECT 
-          id, 
+          id::text as id,
           content, 
           metadata, 
           created_at,
+          updated_at,
           user_id,
           1 - (embedding <=> $1::vector) as score
          FROM user_data_schema.memory_embeddings
@@ -135,10 +126,15 @@ export class VectorMemory {
         [vectorString, userId, limit]
       );
 
-      console.log(`✅ Found ${result.rows.length} semantically similar memories`);
+      console.log(`✅ Found ${result.rows.length} memories`);
 
       return result.rows.map(row => ({
-        ...row,
+        id: row.id,
+        content: row.content,
+        metadata: row.metadata,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        user_id: row.user_id,
         score: parseFloat(row.score),
       }));
     } catch (error) {
@@ -148,41 +144,72 @@ export class VectorMemory {
   }
 
   /**
-   * Get all memories (no search)
+   * ✅ FIXED: Get all memories with proper user_id filter
    */
   async getAllMemories(userId: string) {
+    console.log(`📋 Fetching all memories for user ${userId}`);
+    
     const result = await this.client.query(
-      `SELECT id, content, metadata, created_at, user_id
+      `SELECT 
+        id::text as id,
+        content, 
+        metadata, 
+        created_at,
+        updated_at,
+        user_id
        FROM user_data_schema.memory_embeddings 
        WHERE user_id = $1 
        ORDER BY created_at DESC`,
       [userId]
     );
-    return result.rows;
+    
+    console.log(`✅ Found ${result.rows.length} memories`);
+    
+    return result.rows.map(row => ({
+      id: row.id,
+      content: row.content,
+      metadata: row.metadata,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      user_id: row.user_id,
+    }));
   }
 
   /**
-   * Delete memory
+   * ✅ FIXED: Delete with user_id verification
    */
-  async deleteMemory(memoryId: string) {
-    await this.client.query(
-      `DELETE FROM user_data_schema.memory_embeddings WHERE id = $1`,
-      [memoryId]
-    );
+  async deleteMemory(memoryId: string, userId?: string) {
+    console.log(`🗑️  Deleting memory ${memoryId}${userId ? ` for user ${userId}` : ''}`);
+    
+    // Build query with optional user_id check for security
+    const query = userId
+      ? `DELETE FROM user_data_schema.memory_embeddings WHERE id = $1 AND user_id = $2 RETURNING id`
+      : `DELETE FROM user_data_schema.memory_embeddings WHERE id = $1 RETURNING id`;
+    
+    const params = userId ? [memoryId, userId] : [memoryId];
+    
+    const result = await this.client.query(query, params);
+    
+    if (result.rowCount === 0) {
+      throw new Error('Memory not found or access denied');
+    }
+    
+    console.log(`✅ Memory deleted`);
   }
 
   /**
-   * Get user context for AI (for N8N workflows)
-   * Returns recent + semantically relevant memories
+   * Get user context for AI
    */
   async getUserContext(userId: string, query?: string, limit = 5) {
     if (query) {
-      // Semantic search
       return await this.searchMemories(userId, query, limit);
     } else {
-      // Recent memories
       const result = await this.client.query(
-        `SELECT id, content, metadata, created_at
+        `SELECT 
+          id::text as id,
+          content, 
+          metadata, 
+          created_at
          FROM user_data_schema.memory_embeddings 
          WHERE user_id = $1 
          ORDER BY created_at DESC
@@ -194,13 +221,13 @@ export class VectorMemory {
   }
 
   /**
-   * Health check - verify Ollama is running
+   * Health check
    */
   async healthCheck(): Promise<boolean> {
     try {
       const response = await fetch(`${this.ollamaUrl}/api/tags`, {
         method: 'GET',
-        signal: AbortSignal.timeout(10000), // 10 second timeout
+        signal: AbortSignal.timeout(10000),
       });
       return response.ok;
     } catch {
@@ -213,7 +240,7 @@ export class VectorMemory {
   }
 }
 
-// Singleton instances (connection pooling)
+// Singleton instances
 const instances = new Map<string, VectorMemory>();
 
 export async function getVectorMemory(connectionString: string, ollamaUrl?: string): Promise<VectorMemory> {

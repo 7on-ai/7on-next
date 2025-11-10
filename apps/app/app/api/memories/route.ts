@@ -1,3 +1,4 @@
+// apps/app/app/api/memories/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { database as db } from '@repo/database';
@@ -27,17 +28,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'DB connection failed' }, { status: 500 });
     }
 
-    // ✅ Use external Ollama URL
     const ollamaUrl = process.env.OLLAMA_EXTERNAL_URL;
     const vectorMemory = await getVectorMemory(connectionString, ollamaUrl);
 
+    // ✅ Pass user.id (not clerkUserId)
     const memories = query
       ? await vectorMemory.searchMemories(user.id, query)
       : await vectorMemory.getAllMemories(user.id);
 
+    console.log(`✅ Fetched ${memories.length} memories for user ${user.id}`);
+
     return NextResponse.json({ success: true, memories });
   } catch (error) {
-    console.error('Error:', error);
+    console.error('❌ GET error:', error);
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }
@@ -49,6 +52,10 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const { content, metadata } = body;
+
+    if (!content || typeof content !== 'string' || content.trim().length === 0) {
+      return NextResponse.json({ error: 'Content is required' }, { status: 400 });
+    }
 
     const user = await db.user.findUnique({
       where: { clerkId: clerkUserId },
@@ -64,15 +71,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'DB connection failed' }, { status: 500 });
     }
 
-    // ✅ Use external Ollama URL
     const ollamaUrl = process.env.OLLAMA_EXTERNAL_URL;
     const vectorMemory = await getVectorMemory(connectionString, ollamaUrl);
     
-    await vectorMemory.addMemory(user.id, content, metadata);
+    // ✅ CRITICAL: Pass user.id (database ID, not Clerk ID)
+    console.log(`📝 Adding memory for user: ${user.id}`);
+    await vectorMemory.addMemory(user.id, content.trim(), metadata);
+    
+    console.log(`✅ Memory added successfully`);
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error:', error);
+    console.error('❌ POST error:', error);
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }
@@ -88,7 +98,7 @@ export async function DELETE(request: NextRequest) {
 
     const user = await db.user.findUnique({
       where: { clerkId: clerkUserId },
-      select: { northflankProjectId: true, postgresSchemaInitialized: true },
+      select: { id: true, northflankProjectId: true, postgresSchemaInitialized: true },
     });
 
     if (!user?.postgresSchemaInitialized || !user.northflankProjectId) {
@@ -103,19 +113,21 @@ export async function DELETE(request: NextRequest) {
     const ollamaUrl = process.env.OLLAMA_EXTERNAL_URL;
     const vectorMemory = await getVectorMemory(connectionString, ollamaUrl);
     
-    await vectorMemory.deleteMemory(memoryId);
+    // ✅ Verify ownership before deleting
+    console.log(`🗑️  Deleting memory ${memoryId} for user ${user.id}`);
+    await vectorMemory.deleteMemory(memoryId, user.id);
+    
+    console.log(`✅ Memory deleted`);
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error:', error);
+    console.error('❌ DELETE error:', error);
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }
 
 async function getPostgresConnectionString(projectId: string): Promise<string | null> {
   try {
-    console.log('🔍 Fetching addons for project:', projectId);
-    
     const addonsResponse = await fetch(
       `https://api.northflank.com/v1/projects/${projectId}/addons`,
       {
@@ -135,7 +147,7 @@ async function getPostgresConnectionString(projectId: string): Promise<string | 
     const addonsList = addonsData.data?.addons || addonsData.data || [];
     
     if (!Array.isArray(addonsList)) {
-      console.error('❌ Addons is not array:', addonsList);
+      console.error('❌ Addons is not array');
       return null;
     }
     
@@ -145,8 +157,6 @@ async function getPostgresConnectionString(projectId: string): Promise<string | 
       console.error('❌ No PostgreSQL addon found');
       return null;
     }
-
-    console.log('✅ Found PostgreSQL addon:', postgresAddon.id);
 
     const credentialsResponse = await fetch(
       `https://api.northflank.com/v1/projects/${projectId}/addons/${postgresAddon.id}/credentials`,
@@ -159,7 +169,7 @@ async function getPostgresConnectionString(projectId: string): Promise<string | 
     );
 
     if (!credentialsResponse.ok) {
-      console.error('❌ Credentials API failed:', credentialsResponse.status);
+      console.error('❌ Credentials API failed');
       return null;
     }
 
@@ -167,12 +177,6 @@ async function getPostgresConnectionString(projectId: string): Promise<string | 
     const connectionString = credentials.data?.envs?.EXTERNAL_POSTGRES_URI || 
                             credentials.data?.envs?.POSTGRES_URI || 
                             null;
-    
-    if (connectionString) {
-      console.log('✅ Connection string retrieved');
-    } else {
-      console.error('❌ No connection string');
-    }
     
     return connectionString;
   } catch (error) {
