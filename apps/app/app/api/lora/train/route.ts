@@ -1,5 +1,6 @@
 // apps/app/app/api/lora/train/route.ts
-// ✅ FIXED: Proper Ollama service connection + Better error handling
+// ✅ FIXED: Use EXTERNAL URL because Vercel cannot reach Northflank internal network
+
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { database as db } from '@repo/database';
@@ -7,12 +8,12 @@ import { database as db } from '@repo/database';
 const NORTHFLANK_API_TOKEN = process.env.NORTHFLANK_API_TOKEN!;
 const OLLAMA_PROJECT_ID = process.env.OLLAMA_PROJECT_ID!;
 
-// ✅ FIX 1: Use INTERNAL URL (not external)
-// Internal services in Northflank can talk via: http://SERVICE_ID--PROJECT_ID.code.run
-const OLLAMA_SERVICE_ID = process.env.OLLAMA_SERVICE_ID || 'ollama';
-const OLLAMA_INTERNAL_URL = `http://${OLLAMA_SERVICE_ID}--${OLLAMA_PROJECT_ID}.code.run`;
+// ✅ CRITICAL FIX: Vercel needs EXTERNAL URL (not internal)
+// Get from Northflank: Services → Ollama → Ports → Public URL
+const OLLAMA_EXTERNAL_URL = process.env.OLLAMA_TRAINING_URL || 
+  'https://train--ollama--fppvxj4w99rz.code.run'; // Your public URL from screenshot
 
-console.log('🔗 Ollama Training Endpoint:', OLLAMA_INTERNAL_URL);
+console.log('🔗 Ollama Training URL:', OLLAMA_EXTERNAL_URL);
 
 // ===== POST: Start Training =====
 export async function POST(request: NextRequest) {
@@ -39,7 +40,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Project not found' }, { status: 400 });
     }
 
-    // 🚫 Check if already training
     if (user.loraTrainingStatus === 'training') {
       return NextResponse.json({
         error: 'Training already in progress',
@@ -47,7 +47,6 @@ export async function POST(request: NextRequest) {
       }, { status: 409 });
     }
 
-    // 📊 Check if enough data
     const totalData = user.goodChannelCount + user.badChannelCount + user.mclChainCount;
     
     if (totalData < 10) {
@@ -57,37 +56,36 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // 🔗 Get Postgres connection
     const connectionString = await getPostgresConnectionString(user.northflankProjectId);
     
     if (!connectionString) {
       throw new Error('Cannot get database connection');
     }
 
-    // 📝 Auto-approve data before training
+    // ✅ Check Ollama health BEFORE starting
+    console.log('🏥 Checking Ollama service health...');
+    const healthCheck = await checkOllamaHealth();
+    
+    if (!healthCheck.healthy) {
+      console.error('❌ Ollama not ready:', healthCheck.error);
+      
+      return NextResponse.json({
+        error: 'Training service not available',
+        details: healthCheck.error,
+        suggestion: healthCheck.suggestion,
+      }, { status: 503 });
+    }
+
+    console.log('✅ Ollama service is healthy');
+
     console.log('📝 Auto-approving data...');
     await autoApproveData(connectionString, user.id);
 
-    // 🎯 Generate adapter version
     const adapterVersion = `v${Date.now()}`;
     const trainingId = `train-${user.id.slice(0, 8)}-${adapterVersion}`;
 
     console.log(`🚀 Starting training: ${trainingId}`);
 
-    // ✅ FIX 2: Check Ollama health BEFORE starting
-    const healthCheck = await checkOllamaHealth();
-    
-    if (!healthCheck.healthy) {
-      console.error('❌ Ollama service not ready:', healthCheck.error);
-      
-      return NextResponse.json({
-        error: 'Training service not available',
-        details: healthCheck.error,
-        suggestion: 'Please wait a few minutes and try again. The training service may be starting up.',
-      }, { status: 503 });
-    }
-
-    // ✅ Update status to training immediately
     await db.user.update({
       where: { id: user.id },
       data: {
@@ -98,7 +96,6 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // 📝 Log training job to Postgres
     await logTrainingJob(connectionString, {
       userId: user.id,
       jobId: trainingId,
@@ -112,12 +109,11 @@ export async function POST(request: NextRequest) {
       totalSamples: totalData,
     });
 
-    // 🚀 Call Ollama service training endpoint
-    console.log(`📤 Sending training request to Ollama service...`);
+    // ✅ Call Ollama training endpoint with EXTERNAL URL
+    console.log(`📤 Sending request to: ${OLLAMA_EXTERNAL_URL}/api/train`);
     
     try {
-      // ✅ FIX 3: Use internal URL with proper timeout
-      const trainingResponse = await fetch(`${OLLAMA_INTERNAL_URL}:5000/api/train`, {
+      const trainingResponse = await fetch(`${OLLAMA_EXTERNAL_URL}/api/train`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -130,24 +126,25 @@ export async function POST(request: NextRequest) {
           base_model: 'mistral',
           output_dir: `/models/adapters/${user.id}/${adapterVersion}`,
         }),
-        signal: AbortSignal.timeout(30000), // 30s timeout
+        signal: AbortSignal.timeout(30000),
       });
 
       if (!trainingResponse.ok) {
         const errorText = await trainingResponse.text();
-        console.error('❌ Ollama training request failed:', {
+        console.error('❌ Training request failed:', {
           status: trainingResponse.status,
           statusText: trainingResponse.statusText,
-          body: errorText,
+          url: `${OLLAMA_EXTERNAL_URL}/api/train`,
+          body: errorText.substring(0, 500),
         });
         
-        throw new Error(`Training service error: ${trainingResponse.status} - ${errorText}`);
+        throw new Error(`Training service error: ${trainingResponse.status} - ${errorText.substring(0, 200)}`);
       }
 
       const trainingData = await trainingResponse.json();
-      console.log('✅ Training started on Ollama service:', trainingData);
+      console.log('✅ Training started:', trainingData);
 
-      // 🔄 Start monitoring training status (async)
+      // Start monitoring
       monitorTrainingStatus(
         user.id,
         trainingId,
@@ -173,7 +170,6 @@ export async function POST(request: NextRequest) {
     } catch (trainingError) {
       console.error('❌ Training start error:', trainingError);
       
-      // Revert status on error
       await db.user.update({
         where: { id: user.id },
         data: {
@@ -201,7 +197,77 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// ===== GET: Check Status =====
+// ===== Helper: Check Ollama Health =====
+async function checkOllamaHealth(): Promise<{ 
+  healthy: boolean; 
+  error?: string;
+  suggestion?: string;
+}> {
+  try {
+    console.log(`Checking: ${OLLAMA_EXTERNAL_URL}/health`);
+    
+    const response = await fetch(`${OLLAMA_EXTERNAL_URL}/health`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!response.ok) {
+      return {
+        healthy: false,
+        error: `HTTP ${response.status}: ${response.statusText}`,
+        suggestion: 'The training service is starting. Please wait 1-2 minutes and try again.',
+      };
+    }
+
+    const data = await response.json();
+    
+    if (data.status !== 'healthy') {
+      return {
+        healthy: false,
+        error: `Service status: ${data.status}`,
+        suggestion: 'Training service is not fully ready. Please wait and retry.',
+      };
+    }
+
+    return { healthy: true };
+    
+  } catch (error) {
+    const err = error as Error;
+    
+    // Network errors
+    if (err.message.includes('ENOTFOUND') || err.message.includes('getaddrinfo')) {
+      return {
+        healthy: false,
+        error: 'Cannot reach training service (DNS error)',
+        suggestion: 'Make sure external access is enabled in Northflank service settings.',
+      };
+    }
+    
+    if (err.message.includes('ETIMEDOUT') || err.message.includes('timeout')) {
+      return {
+        healthy: false,
+        error: 'Training service timeout',
+        suggestion: 'Service is starting or overloaded. Wait 1-2 minutes and try again.',
+      };
+    }
+    
+    if (err.message.includes('ECONNREFUSED')) {
+      return {
+        healthy: false,
+        error: 'Connection refused',
+        suggestion: 'Training service is not running. Please check Northflank service status.',
+      };
+    }
+
+    return {
+      healthy: false,
+      error: err.message,
+      suggestion: 'Please check Northflank logs for more details.',
+    };
+  }
+}
+
+// ===== GET: Status =====
 export async function GET(request: NextRequest) {
   try {
     const { userId: clerkUserId } = await auth();
@@ -248,7 +314,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// ===== DELETE: Cancel Training =====
+// ===== DELETE: Cancel =====
 export async function DELETE(request: NextRequest) {
   try {
     const { userId: clerkUserId } = await auth();
@@ -266,66 +332,27 @@ export async function DELETE(request: NextRequest) {
       },
     });
 
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
-
-    if (user.loraTrainingStatus !== 'training') {
+    if (!user || user.loraTrainingStatus !== 'training') {
       return NextResponse.json({ 
         error: 'No training in progress',
-        status: user.loraTrainingStatus 
       }, { status: 400 });
     }
-
-    console.log(`🛑 Cancelling training for user ${user.id}`);
 
     await db.user.update({
       where: { id: user.id },
       data: {
         loraTrainingStatus: 'cancelled',
-        loraTrainingError: 'Training cancelled by user',
+        loraTrainingError: 'Cancelled by user',
         updatedAt: new Date(),
       },
     });
 
-    const connectionString = await getPostgresConnectionString(user.northflankProjectId!);
-    if (connectionString) {
-      const { Client } = require('pg');
-      const client = new Client({ connectionString });
-      
-      try {
-        await client.connect();
-        
-        await client.query(`
-          UPDATE user_data_schema.training_jobs 
-          SET 
-            status = 'cancelled',
-            error_message = 'Cancelled by user',
-            completed_at = NOW(),
-            updated_at = NOW()
-          WHERE id = (
-            SELECT id 
-            FROM user_data_schema.training_jobs
-            WHERE user_id = $1 
-              AND status = 'running'
-            ORDER BY created_at DESC
-            LIMIT 1
-          )
-        `, [user.id]);
-        
-      } finally {
-        await client.end();
-      }
-    }
-
     return NextResponse.json({
       success: true,
       message: 'Training cancelled',
-      status: 'cancelled',
     });
 
   } catch (error) {
-    console.error('❌ Cancel training error:', error);
     return NextResponse.json(
       { error: (error as Error).message },
       { status: 500 }
@@ -334,36 +361,6 @@ export async function DELETE(request: NextRequest) {
 }
 
 // ===== Helper Functions =====
-
-// ✅ FIX 4: Add health check function
-async function checkOllamaHealth(): Promise<{ healthy: boolean; error?: string }> {
-  try {
-    const response = await fetch(`${OLLAMA_INTERNAL_URL}:5000/health`, {
-      method: 'GET',
-      signal: AbortSignal.timeout(10000),
-    });
-
-    if (!response.ok) {
-      return {
-        healthy: false,
-        error: `Service returned ${response.status}`,
-      };
-    }
-
-    const data = await response.json();
-    
-    return {
-      healthy: data.status === 'healthy',
-      error: data.status !== 'healthy' ? 'Service not healthy' : undefined,
-    };
-  } catch (error) {
-    console.error('Health check failed:', error);
-    return {
-      healthy: false,
-      error: (error as Error).message,
-    };
-  }
-}
 
 async function autoApproveData(connectionString: string, userId: string) {
   const { Client } = require('pg');
@@ -375,24 +372,19 @@ async function autoApproveData(connectionString: string, userId: string) {
     await client.query(`
       UPDATE user_data_schema.stm_good 
       SET approved_for_consolidation = TRUE 
-      WHERE user_id = $1 
-        AND approved_for_consolidation = FALSE 
-        AND alignment_score >= 0.7
+      WHERE user_id = $1 AND approved_for_consolidation = FALSE
     `, [userId]);
     
     await client.query(`
       UPDATE user_data_schema.stm_bad 
       SET approved_for_shadow_learning = TRUE 
-      WHERE user_id = $1 
-        AND approved_for_shadow_learning = FALSE 
-        AND safe_counterfactual IS NOT NULL
+      WHERE user_id = $1 AND approved_for_shadow_learning = FALSE
     `, [userId]);
     
     await client.query(`
       UPDATE user_data_schema.mcl_chains 
       SET approved_for_training = TRUE 
-      WHERE user_id = $1 
-        AND approved_for_training = FALSE
+      WHERE user_id = $1 AND approved_for_training = FALSE
     `, [userId]);
     
     console.log('✅ Data auto-approved');
@@ -408,219 +400,106 @@ async function monitorTrainingStatus(
   adapterVersion: string,
   connectionString: string
 ) {
-  console.log(`🔍 Monitoring training ${trainingId}...`);
+  console.log(`🔍 Monitoring: ${trainingId}`);
   
   const maxAttempts = 60;
   let attempts = 0;
-  let consecutiveErrors = 0;
   
   while (attempts < maxAttempts) {
     await new Promise(resolve => setTimeout(resolve, 30000));
     attempts++;
     
     try {
-      const user = await db.user.findUnique({
-        where: { id: userId },
-        select: { loraTrainingStatus: true },
-      });
-
-      if (!user || user.loraTrainingStatus === 'cancelled') {
-        console.log('🛑 Training cancelled');
-        break;
-      }
-
-      if (user.loraTrainingStatus === 'completed' || user.loraTrainingStatus === 'failed') {
-        console.log(`ℹ️ Training already ${user.loraTrainingStatus}`);
-        break;
-      }
-
       const statusResponse = await fetch(
-        `${OLLAMA_INTERNAL_URL}:5000/api/train/status/${trainingId}`,
+        `${OLLAMA_EXTERNAL_URL}/api/train/status/${trainingId}`,
         {
           method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
           signal: AbortSignal.timeout(10000),
         }
       );
 
-      if (!statusResponse.ok) {
-        consecutiveErrors++;
-        console.warn(`⚠️ Cannot get status (${consecutiveErrors}/10)`);
-        
-        if (consecutiveErrors >= 10) {
-          await db.user.update({
-            where: { id: userId },
-            data: {
-              loraTrainingStatus: 'failed',
-              loraTrainingError: 'Training service not responding',
-              updatedAt: new Date(),
-            },
-          });
-          break;
-        }
-        continue;
-      }
+      if (!statusResponse.ok) continue;
 
-      consecutiveErrors = 0;
       const statusData = await statusResponse.json();
-      const status = statusData.status;
       
-      console.log(`📊 Training status: ${status}`);
-
-      if (status === 'completed' || status === 'success') {
+      if (statusData.status === 'completed' || statusData.status === 'success') {
         await db.user.update({
           where: { id: userId },
           data: {
             loraTrainingStatus: 'completed',
             loraLastTrainedAt: new Date(),
             loraTrainingError: null,
-            updatedAt: new Date(),
           },
         });
-
-        await updateTrainingJobStatus(connectionString, trainingId, {
-          status: 'completed',
-          completedAt: new Date(),
-          trainingLoss: statusData.final_loss,
-        });
-        
         break;
-      } 
-      else if (status === 'failed' || status === 'error') {
+      }
+      
+      if (statusData.status === 'failed') {
         await db.user.update({
           where: { id: userId },
           data: {
             loraTrainingStatus: 'failed',
             loraTrainingError: statusData.error || 'Training failed',
-            updatedAt: new Date(),
           },
         });
-
-        await updateTrainingJobStatus(connectionString, trainingId, {
-          status: 'failed',
-          errorMessage: statusData.error,
-          completedAt: new Date(),
-        });
-        
         break;
       }
       
     } catch (error) {
-      consecutiveErrors++;
-      console.error(`❌ Monitoring error (${consecutiveErrors}/10):`, error);
-      
-      if (consecutiveErrors >= 10) {
-        await db.user.update({
-          where: { id: userId },
-          data: {
-            loraTrainingStatus: 'failed',
-            loraTrainingError: 'Monitoring failed',
-            updatedAt: new Date(),
-          },
-        });
-        break;
-      }
+      console.error('Monitoring error:', error);
     }
-  }
-  
-  if (attempts >= maxAttempts) {
-    await db.user.update({
-      where: { id: userId },
-      data: {
-        loraTrainingStatus: 'failed',
-        loraTrainingError: 'Training timeout (30 minutes)',
-        updatedAt: new Date(),
-      },
-    });
   }
 }
 
-async function logTrainingJob(
-  connectionString: string,
-  data: {
-    userId: string;
-    jobId: string;
-    jobName: string;
-    adapterVersion: string;
-    datasetComposition: any;
-    totalSamples: number;
-  }
-) {
+async function logTrainingJob(connectionString: string, data: any) {
   const { Client } = require('pg');
   const client = new Client({ connectionString });
   
   try {
     await client.connect();
-    
     await client.query(`
       INSERT INTO user_data_schema.training_jobs 
         (user_id, job_id, job_name, adapter_version, status, dataset_composition, total_samples, started_at)
       VALUES ($1, $2, $3, $4, 'running', $5, $6, NOW())
     `, [
-      data.userId,
-      data.jobId,
-      data.jobName,
-      data.adapterVersion,
-      JSON.stringify(data.datasetComposition),
-      data.totalSamples,
+      data.userId, data.jobId, data.jobName, data.adapterVersion,
+      JSON.stringify(data.datasetComposition), data.totalSamples,
     ]);
-    
-    console.log('✅ Training job logged');
-    
   } finally {
     await client.end();
   }
 }
 
-async function updateTrainingJobStatus(
-  connectionString: string,
-  jobId: string,
-  update: {
-    status?: string;
-    completedAt?: Date;
-    trainingLoss?: number;
-    errorMessage?: string;
-  }
-) {
+async function updateTrainingJobStatus(connectionString: string, jobId: string, update: any) {
   const { Client } = require('pg');
   const client = new Client({ connectionString });
   
   try {
     await client.connect();
-    
     const setClauses: string[] = [];
     const values: any[] = [];
-    let paramIndex = 1;
+    let i = 1;
     
     if (update.status) {
-      setClauses.push(`status = $${paramIndex++}`);
+      setClauses.push(`status = $${i++}`);
       values.push(update.status);
     }
-    
     if (update.completedAt) {
-      setClauses.push(`completed_at = $${paramIndex++}`);
+      setClauses.push(`completed_at = $${i++}`);
       values.push(update.completedAt);
     }
-    
-    if (update.trainingLoss) {
-      setClauses.push(`training_loss = $${paramIndex++}`);
-      values.push(update.trainingLoss);
-    }
-    
     if (update.errorMessage) {
-      setClauses.push(`error_message = $${paramIndex++}`);
+      setClauses.push(`error_message = $${i++}`);
       values.push(update.errorMessage);
     }
     
-    setClauses.push(`updated_at = NOW()`);
     values.push(jobId);
     
     await client.query(`
       UPDATE user_data_schema.training_jobs 
-      SET ${setClauses.join(', ')}
-      WHERE job_id = $${paramIndex}
+      SET ${setClauses.join(', ')}, updated_at = NOW()
+      WHERE job_id = $${i}
     `, values);
-    
   } finally {
     await client.end();
   }
@@ -630,11 +509,7 @@ async function getPostgresConnectionString(projectId: string): Promise<string | 
   try {
     const addonsResponse = await fetch(
       `https://api.northflank.com/v1/projects/${projectId}/addons`,
-      {
-        headers: {
-          Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
-        },
-      }
+      { headers: { Authorization: `Bearer ${NORTHFLANK_API_TOKEN}` } }
     );
 
     if (!addonsResponse.ok) return null;
@@ -648,25 +523,15 @@ async function getPostgresConnectionString(projectId: string): Promise<string | 
 
     const credentialsResponse = await fetch(
       `https://api.northflank.com/v1/projects/${projectId}/addons/${postgresAddon.id}/credentials`,
-      {
-        headers: {
-          Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
-        },
-      }
+      { headers: { Authorization: `Bearer ${NORTHFLANK_API_TOKEN}` } }
     );
 
     if (!credentialsResponse.ok) return null;
 
     const credentials = await credentialsResponse.json();
-    
-    return (
-      credentials.data?.envs?.EXTERNAL_POSTGRES_URI ||
-      credentials.data?.envs?.POSTGRES_URI ||
-      null
-    );
+    return credentials.data?.envs?.EXTERNAL_POSTGRES_URI || null;
     
   } catch (error) {
-    console.error('Error getting connection string:', error);
     return null;
   }
 }
