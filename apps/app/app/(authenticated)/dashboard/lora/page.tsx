@@ -5,13 +5,12 @@ import { database } from '@repo/database';
 import { Header } from '../../components/header';
 import dynamic from 'next/dynamic';
 
-// Dynamic import เพื่อป้องกัน SSR error
+// Dynamic import - ใน Next.js 15 ไม่ต้องใช้ ssr: false
 const LoraTrainingComplete = dynamic(
   () => import('./components/lora-training-complete').then(mod => ({ 
     default: mod.LoraTrainingComplete 
   })),
   { 
-    ssr: false,
     loading: () => (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-gray-100" />
