@@ -6,12 +6,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@repo/design-system/co
 import { Button } from "@repo/design-system/components/ui/button";
 import { Input } from "@repo/design-system/components/ui/input";
 import { Alert, AlertDescription } from "@repo/design-system/components/ui/alert";
-import { Loader2, Database, AlertCircle, RefreshCw, Trash2, Clock, Search, Plus, Sparkles, CheckCircle2 } from "lucide-react";
+import { Badge } from "@repo/design-system/components/ui/badge";
+import { Loader2, Database, AlertCircle, RefreshCw, Trash2, Clock, Search, Plus, Sparkles, CheckCircle2, Shield, AlertTriangle } from "lucide-react";
 
 interface OllamaStatus {
   status: 'online' | 'offline' | 'unreachable' | 'pulling';
   models: string[];
   hasNomicEmbed: boolean;
+}
+
+interface GatingResult {
+  routing: 'good' | 'bad' | 'review';
+  valence: string;
+  scores: any;
+  safe_counterfactual?: string;
 }
 
 export function MemoriesClient({ 
@@ -29,9 +37,12 @@ export function MemoriesClient({
   const [newMessage, setNewMessage] = useState("");
   const [searchMode, setSearchMode] = useState<'all' | 'semantic'>('all');
   
-  // ✅ NEW: Ollama status
+  // Ollama status
   const [ollamaStatus, setOllamaStatus] = useState<OllamaStatus | null>(null);
   const [checkingOllama, setCheckingOllama] = useState(false);
+  
+  // ✅ NEW: Gating result state
+  const [lastGatingResult, setLastGatingResult] = useState<GatingResult | null>(null);
   
   useEffect(() => {
     if (isInitialized && hasCredential) {
@@ -42,7 +53,7 @@ export function MemoriesClient({
     }
   }, [isInitialized, hasCredential]);
   
-  // ✅ Check Ollama status
+  // Check Ollama status
   const checkOllamaStatus = async () => {
     try {
       setCheckingOllama(true);
@@ -56,7 +67,7 @@ export function MemoriesClient({
     }
   };
   
-  // ✅ Setup Ollama (pull models)
+  // Setup Ollama (pull models)
   const setupOllama = async () => {
     try {
       setCheckingOllama(true);
@@ -141,11 +152,14 @@ export function MemoriesClient({
     }
   };
 
+  // ✅ UPDATED: Add memory with gating result handling
   const handleAddMemory = async () => {
     if (!newMessage.trim()) return;
 
     setLoading(true);
     setError(null);
+    setLastGatingResult(null);
+    
     try {
       const response = await fetch('/api/memories', {
         method: 'POST',
@@ -164,6 +178,14 @@ export function MemoriesClient({
       const data = await response.json();
       
       if (data.success) {
+        // ✅ Show gating result
+        setLastGatingResult({
+          routing: data.routing,
+          valence: data.valence,
+          scores: data.scores,
+          safe_counterfactual: data.safe_counterfactual,
+        });
+        
         setNewMessage('');
         if (searchMode === 'semantic' && searchQuery) {
           await handleSemanticSearch();
@@ -276,10 +298,10 @@ export function MemoriesClient({
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">
             <Sparkles className="h-8 w-8 text-purple-500" />
-            Semantic Memories
+            Semantic Memories with Gating
           </h1>
           <p className="text-muted-foreground">
-            AI-powered memory with Ollama + pgvector
+            AI-powered memory with content moderation using Ollama + pgvector
           </p>
         </div>
         <Button onClick={fetchAllMemories} disabled={loading}>
@@ -288,7 +310,7 @@ export function MemoriesClient({
         </Button>
       </div>
       
-      {/* ✅ Ollama Status Card */}
+      {/* Ollama Status Card */}
       {ollamaStatus && (
         <Card className={
           ollamaStatus.status === 'online' && ollamaStatus.hasNomicEmbed
@@ -367,6 +389,60 @@ export function MemoriesClient({
         </Alert>
       )}
       
+      {/* ✅ NEW: Gating Result Alert */}
+      {lastGatingResult && (
+        <Alert className={
+          lastGatingResult.routing === 'good' ? 'border-green-200 dark:border-green-800' :
+          lastGatingResult.routing === 'bad' ? 'border-red-200 dark:border-red-800' :
+          'border-yellow-200 dark:border-yellow-800'
+        }>
+          <div className="flex items-start gap-3">
+            {lastGatingResult.routing === 'good' && <CheckCircle2 className="h-5 w-5 text-green-600" />}
+            {lastGatingResult.routing === 'bad' && <Shield className="h-5 w-5 text-red-600" />}
+            {lastGatingResult.routing === 'review' && <AlertTriangle className="h-5 w-5 text-yellow-600" />}
+            
+            <div className="flex-1">
+              <div className="font-semibold">
+                Content Moderation Result
+              </div>
+              <div className="text-sm mt-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge variant={
+                    lastGatingResult.routing === 'good' ? 'default' :
+                    lastGatingResult.routing === 'bad' ? 'destructive' :
+                    'secondary'
+                  }>
+                    {lastGatingResult.routing.toUpperCase()} Channel
+                  </Badge>
+                  <Badge variant="outline">
+                    Valence: {lastGatingResult.valence}
+                  </Badge>
+                  {lastGatingResult.scores && (
+                    <Badge variant="outline">
+                      Alignment: {(lastGatingResult.scores.alignment * 100).toFixed(0)}%
+                    </Badge>
+                  )}
+                </div>
+                
+                {lastGatingResult.safe_counterfactual && (
+                  <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 rounded text-xs">
+                    <strong>Safe Alternative:</strong> {lastGatingResult.safe_counterfactual}
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => setLastGatingResult(null)}
+            >
+              ×
+            </Button>
+          </div>
+        </Alert>
+      )}
+      
       {/* Semantic Search Card */}
       <Card className="border-purple-200 dark:border-purple-800">
         <CardHeader>
@@ -425,7 +501,7 @@ export function MemoriesClient({
             </Button>
           </div>
           <p className="text-xs text-muted-foreground mt-2">
-            🤖 Converted to 768-dim vectors using Ollama
+            🤖 Converted to 768-dim vectors using Ollama + Content Gating
           </p>
         </CardContent>
       </Card>
@@ -464,7 +540,7 @@ export function MemoriesClient({
         </CardContent>
       </Card>
       
-      {/* Memories List */}
+      {/* Memories List - Enhanced with Gating Info */}
       <Card>
         <CardHeader>
           <CardTitle>
@@ -474,103 +550,128 @@ export function MemoriesClient({
           </CardTitle>
         </CardHeader>
         <CardContent>
-{loading ? (
-  <div className="flex items-center justify-center py-12">
-    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-  </div>
-) : error ? (
-  <div className="text-center py-12 text-red-500">
-    <AlertCircle className="h-8 w-8 mx-auto mb-2" />
-    <p className="font-semibold">Error loading memories</p>
-    <p className="text-sm mt-1">{error}</p>
-    <Button onClick={fetchAllMemories} variant="outline" className="mt-4">
-      Try Again
-    </Button>
-  </div>
-) : memories.length === 0 ? (
-  <div className="text-center py-12 text-muted-foreground">
-    <Database className="h-8 w-8 mx-auto mb-2 opacity-50" />
-    <p className="font-semibold">
-      {searchMode === 'semantic' ? 'No matching memories found' : 'No memories yet'}
-    </p>
-    <p className="text-sm">
-      {searchMode === 'semantic' 
-        ? 'Try a different search query' 
-        : 'Add your first memory above'}
-    </p>
-  </div>
-) : (
-  <div className="space-y-4">
-    {memories.map((memory) => (
-      <div
-        key={memory.id}
-        className="p-4 border rounded-lg hover:bg-muted/50 transition"
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1 min-w-0">
-            {/* Main content */}
-            <p className="text-sm break-words font-medium">{memory.content}</p>
-            
-            {/* Similarity score for semantic search */}
-            {memory.score !== undefined && (
-              <div className="mt-2 inline-flex items-center gap-2 px-2 py-1 bg-purple-100 dark:bg-purple-900/30 rounded text-xs">
-                <Sparkles className="h-3 w-3" />
-                <span className="font-semibold">Similarity:</span>
-                <span>{(memory.score * 100).toFixed(1)}%</span>
-              </div>
-            )}
-            
-            {/* Metadata */}
-            {memory.metadata && Object.keys(memory.metadata).length > 0 && (
-              <details className="mt-2">
-                <summary className="text-xs text-muted-foreground cursor-pointer hover:underline">
-                  View metadata
-                </summary>
-                <pre className="mt-2 text-xs text-muted-foreground bg-muted p-2 rounded overflow-auto">
-                  {JSON.stringify(memory.metadata, null, 2)}
-                </pre>
-              </details>
-            )}
-            
-            {/* ✅ FIXED: Show ID and timestamps */}
-            <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
-              <div className="flex items-center gap-1">
-                <span className="font-semibold">ID:</span>
-                <code className="bg-muted px-1 py-0.5 rounded font-mono">
-                  {memory.id.slice(0, 8)}...
-                </code>
-              </div>
-              <div className="flex items-center gap-1">
-                <Clock className="h-3 w-3" />
-                <span>{new Date(memory.created_at).toLocaleString()}</span>
-              </div>
-              {memory.user_id && (
-                <div className="flex items-center gap-1">
-                  <span className="opacity-50">User: {memory.user_id.slice(0, 8)}...</span>
-                </div>
-              )}
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
-          </div>
-          
-          {/* Delete button */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => handleDelete(memory.id)}
-            disabled={deleting === memory.id}
-            className="flex-shrink-0"
-          >
-            {deleting === memory.id ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Trash2 className="h-4 w-4 text-red-500 hover:text-red-600" />
-            )}
-          </Button>
-        </div>
-      </div>
-    ))}
-  </div>
-)}
+          ) : error ? (
+            <div className="text-center py-12 text-red-500">
+              <AlertCircle className="h-8 w-8 mx-auto mb-2" />
+              <p className="font-semibold">Error loading memories</p>
+              <p className="text-sm mt-1">{error}</p>
+              <Button onClick={fetchAllMemories} variant="outline" className="mt-4">
+                Try Again
+              </Button>
+            </div>
+          ) : memories.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <Database className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <p className="font-semibold">
+                {searchMode === 'semantic' ? 'No matching memories found' : 'No memories yet'}
+              </p>
+              <p className="text-sm">
+                {searchMode === 'semantic' 
+                  ? 'Try a different search query' 
+                  : 'Add your first memory above'}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {memories.map((memory) => (
+                <div
+                  key={memory.id}
+                  className="p-4 border rounded-lg hover:bg-muted/50 transition"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      {/* Main content */}
+                      <p className="text-sm break-words font-medium">{memory.content}</p>
+                      
+                      {/* ✅ NEW: Gating badges */}
+                      {memory.metadata?.gating_routing && (
+                        <div className="mt-2 flex items-center gap-2 flex-wrap">
+                          <Badge variant={
+                            memory.metadata.gating_routing === 'good' ? 'default' :
+                            memory.metadata.gating_routing === 'bad' ? 'destructive' :
+                            'secondary'
+                          } className="text-xs">
+                            {memory.metadata.gating_routing}
+                          </Badge>
+                          
+                          {memory.metadata.gating_valence && (
+                            <Badge variant="outline" className="text-xs">
+                              {memory.metadata.gating_valence}
+                            </Badge>
+                          )}
+                          
+                          {memory.metadata.gating_scores?.alignment && (
+                            <Badge variant="outline" className="text-xs">
+                              {(memory.metadata.gating_scores.alignment * 100).toFixed(0)}% aligned
+                            </Badge>
+                          )}
+                        </div>
+                      )}
+                      
+                      {/* Similarity score for semantic search */}
+                      {memory.score !== undefined && (
+                        <div className="mt-2 inline-flex items-center gap-2 px-2 py-1 bg-purple-100 dark:bg-purple-900/30 rounded text-xs">
+                          <Sparkles className="h-3 w-3" />
+                          <span className="font-semibold">Similarity:</span>
+                          <span>{(memory.score * 100).toFixed(1)}%</span>
+                        </div>
+                      )}
+                      
+                      {/* Metadata */}
+                      {memory.metadata && Object.keys(memory.metadata).length > 0 && (
+                        <details className="mt-2">
+                          <summary className="text-xs text-muted-foreground cursor-pointer hover:underline">
+                            View metadata
+                          </summary>
+                          <pre className="mt-2 text-xs text-muted-foreground bg-muted p-2 rounded overflow-auto">
+                            {JSON.stringify(memory.metadata, null, 2)}
+                          </pre>
+                        </details>
+                      )}
+                      
+                      {/* ID and timestamps */}
+                      <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-1">
+                          <span className="font-semibold">ID:</span>
+                          <code className="bg-muted px-1 py-0.5 rounded font-mono">
+                            {memory.id.slice(0, 8)}...
+                          </code>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          <span>{new Date(memory.created_at).toLocaleString()}</span>
+                        </div>
+                        {memory.user_id && (
+                          <div className="flex items-center gap-1">
+                            <span className="opacity-50">User: {memory.user_id.slice(0, 8)}...</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Delete button */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDelete(memory.id)}
+                      disabled={deleting === memory.id}
+                      className="flex-shrink-0"
+                    >
+                      {deleting === memory.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4 text-red-500 hover:text-red-600" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

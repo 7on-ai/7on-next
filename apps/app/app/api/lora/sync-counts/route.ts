@@ -1,4 +1,4 @@
-// apps/app/app/api/lora/sync-counts/route.ts
+// apps/app/app/api/lora/sync-counts/route.ts - FIXED
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { database as db } from '@repo/database';
@@ -29,7 +29,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get Postgres connection
     const connectionString = await getPostgresConnectionString(user.northflankProjectId);
     if (!connectionString) {
       return NextResponse.json(
@@ -38,30 +37,40 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Connect and count data
     const client = new Client({ connectionString });
     await client.connect();
 
     try {
-      // Count Good Channel (from conversations + memory_embeddings)
-      const [goodConvResult, memoryResult] = await Promise.all([
-        client.query(`
-          SELECT COUNT(*) as count 
-          FROM user_data_schema.stm_good 
-          WHERE user_id = $1
-        `, [user.id]),
-        client.query(`
-          SELECT COUNT(*) as count 
-          FROM user_data_schema.memory_embeddings 
-          WHERE user_id = $1
-        `, [user.id])
-      ]);
+      // ✅ FIXED: Count from correct channels
+      
+      // Count Good Channel (stm_good + memory_embeddings with good routing)
+      const goodResult = await client.query(`
+        SELECT COUNT(*) as count 
+        FROM user_data_schema.stm_good 
+        WHERE user_id = $1
+      `, [user.id]);
 
-      // Count Bad Channel
+      // Count memories with good metadata (optional)
+      const goodMemoryResult = await client.query(`
+        SELECT COUNT(*) as count 
+        FROM user_data_schema.memory_embeddings 
+        WHERE user_id = $1
+          AND (metadata->>'gating_routing' = 'good' OR metadata->>'gating_routing' IS NULL)
+      `, [user.id]);
+
+      // Count Bad Channel (stm_bad)
       const badResult = await client.query(`
         SELECT COUNT(*) as count 
         FROM user_data_schema.stm_bad 
         WHERE user_id = $1
+      `, [user.id]);
+
+      // Count bad memories
+      const badMemoryResult = await client.query(`
+        SELECT COUNT(*) as count 
+        FROM user_data_schema.memory_embeddings 
+        WHERE user_id = $1
+          AND metadata->>'gating_routing' = 'bad'
       `, [user.id]);
 
       // Count MCL Chains
@@ -71,25 +80,37 @@ export async function POST(request: NextRequest) {
         WHERE user_id = $1
       `, [user.id]);
 
+      // Count Review Channel (optional)
+      const reviewResult = await client.query(`
+        SELECT COUNT(*) as count 
+        FROM user_data_schema.stm_review 
+        WHERE user_id = $1
+      `, [user.id]);
+
       // Parse counts
-      const goodCount = parseInt(goodConvResult.rows[0]?.count || '0');
-      const memoryCount = parseInt(memoryResult.rows[0]?.count || '0');
+      const goodCount = parseInt(goodResult.rows[0]?.count || '0');
+      const goodMemoryCount = parseInt(goodMemoryResult.rows[0]?.count || '0');
       const badCount = parseInt(badResult.rows[0]?.count || '0');
+      const badMemoryCount = parseInt(badMemoryResult.rows[0]?.count || '0');
       const mclCount = parseInt(mclResult.rows[0]?.count || '0');
+      const reviewCount = parseInt(reviewResult.rows[0]?.count || '0');
+
+      const totalGood = goodCount + goodMemoryCount;
+      const totalBad = badCount + badMemoryCount;
 
       console.log('📊 Synced counts:', {
-        good: goodCount,
-        memory: memoryCount,
-        bad: badCount,
+        good: { stm: goodCount, memory: goodMemoryCount, total: totalGood },
+        bad: { stm: badCount, memory: badMemoryCount, total: totalBad },
         mcl: mclCount,
+        review: reviewCount,
       });
 
       // Update Prisma database
       await db.user.update({
         where: { id: user.id },
         data: {
-          goodChannelCount: goodCount + memoryCount,
-          badChannelCount: badCount,
+          goodChannelCount: totalGood,
+          badChannelCount: totalBad,
           mclChainCount: mclCount,
           updatedAt: new Date(),
         },
@@ -98,10 +119,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         counts: {
-          goodChannel: goodCount + memoryCount,
-          badChannel: badCount,
+          goodChannel: totalGood,
+          badChannel: totalBad,
           mclChains: mclCount,
-          total: goodCount + memoryCount + badCount + mclCount,
+          reviewQueue: reviewCount,
+          total: totalGood + totalBad + mclCount,
+        },
+        breakdown: {
+          good: { stm: goodCount, memory: goodMemoryCount },
+          bad: { stm: badCount, memory: badMemoryCount },
         },
       });
 
