@@ -1,5 +1,5 @@
 // apps/app/app/api/lora/train/route.ts
-// ✅ FIXED: Use existing Ollama service instead of creating new job
+// ✅ FIXED: Added cancel functionality and improved monitoring
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { database as db } from '@repo/database';
@@ -238,6 +238,117 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// ===== DELETE: Cancel Training =====
+export async function DELETE(request: NextRequest) {
+  try {
+    const { userId: clerkUserId } = await auth();
+    
+    if (!clerkUserId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const user = await db.user.findUnique({
+      where: { clerkId: clerkUserId },
+      select: {
+        id: true,
+        northflankProjectId: true,
+        loraTrainingStatus: true,
+      },
+    });
+
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    // ตรวจสอบว่ากำลัง training อยู่หรือไม่
+    if (user.loraTrainingStatus !== 'training') {
+      return NextResponse.json({ 
+        error: 'No training in progress',
+        status: user.loraTrainingStatus 
+      }, { status: 400 });
+    }
+
+    console.log(`🛑 Cancelling training for user ${user.id}`);
+
+    // อัปเดตสถานะเป็น cancelled
+    await db.user.update({
+      where: { id: user.id },
+      data: {
+        loraTrainingStatus: 'cancelled',
+        loraTrainingError: 'Training cancelled by user',
+        updatedAt: new Date(),
+      },
+    });
+
+    // อัปเดต training job ในฐานข้อมูล
+    const connectionString = await getPostgresConnectionString(user.northflankProjectId!);
+    if (connectionString) {
+      const { Client } = require('pg');
+      const client = new Client({ connectionString });
+      
+      try {
+        await client.connect();
+        
+        // อัปเดต job ล่าสุดที่กำลังรัน
+        await client.query(`
+          UPDATE user_data_schema.training_jobs 
+          SET 
+            status = 'cancelled',
+            error_message = 'Cancelled by user',
+            completed_at = NOW(),
+            updated_at = NOW()
+          WHERE user_id = $1 
+            AND status = 'running'
+          ORDER BY created_at DESC
+          LIMIT 1
+        `, [user.id]);
+        
+        console.log('✅ Training job status updated to cancelled');
+        
+      } finally {
+        await client.end();
+      }
+    }
+
+    // พยายามหยุด training บน Ollama service (optional)
+    try {
+      const trainingId = `train-${user.id.slice(0, 8)}`;
+      
+      await fetch(`${OLLAMA_INTERNAL_URL}/api/train/cancel`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          training_id: trainingId,
+          user_id: user.id,
+        }),
+        signal: AbortSignal.timeout(5000),
+      }).catch(err => {
+        console.warn('⚠️ Could not notify Ollama service:', err.message);
+      });
+    } catch (ollamaError) {
+      console.warn('⚠️ Ollama cancel notification failed:', ollamaError);
+      // ไม่ throw error เพราะเราได้อัปเดตสถานะใน DB แล้ว
+    }
+
+    console.log('✅ Training cancelled successfully');
+
+    return NextResponse.json({
+      success: true,
+      message: 'Training cancelled',
+      status: 'cancelled',
+    });
+
+  } catch (error) {
+    console.error('❌ Cancel training error:', error);
+    return NextResponse.json(
+      { error: (error as Error).message },
+      { status: 500 }
+    );
+  }
+}
+
 // ===== Helper Functions =====
 
 async function autoApproveData(connectionString: string, userId: string) {
@@ -290,13 +401,31 @@ async function monitorTrainingStatus(
   
   const maxAttempts = 60; // 30 minutes (30s interval)
   let attempts = 0;
+  let consecutiveErrors = 0;
   
   while (attempts < maxAttempts) {
     await new Promise(resolve => setTimeout(resolve, 30000)); // Wait 30s
     attempts++;
     
     try {
-      // ✅ Check training status via Ollama service
+      // ✅ ตรวจสอบสถานะจาก Prisma DB ก่อน (สำหรับ cancel detection)
+      const user = await db.user.findUnique({
+        where: { id: userId },
+        select: { loraTrainingStatus: true },
+      });
+
+      // ถ้าถูกยกเลิกหรือเปลี่ยนสถานะจาก UI หยุด monitoring
+      if (!user || user.loraTrainingStatus === 'cancelled') {
+        console.log('🛑 Training cancelled via database');
+        break;
+      }
+
+      if (user.loraTrainingStatus === 'completed' || user.loraTrainingStatus === 'failed') {
+        console.log(`ℹ️ Training already ${user.loraTrainingStatus}`);
+        break;
+      }
+
+      // ✅ ตรวจสอบสถานะจาก Ollama service
       const statusResponse = await fetch(
         `${OLLAMA_INTERNAL_URL}/api/train/status/${trainingId}`,
         {
@@ -304,13 +433,41 @@ async function monitorTrainingStatus(
           headers: {
             'Content-Type': 'application/json',
           },
+          signal: AbortSignal.timeout(10000),
         }
       );
 
       if (!statusResponse.ok) {
-        console.warn(`⚠️ Cannot get training status (attempt ${attempts})`);
+        consecutiveErrors++;
+        console.warn(`⚠️ Cannot get training status (attempt ${attempts}/${maxAttempts}, errors: ${consecutiveErrors})`);
+        
+        // ถ้าไม่ได้รับ response 10 ครั้งติดต่อกัน ให้ถือว่าล้มเหลว
+        if (consecutiveErrors >= 10) {
+          console.error('❌ Training service not responding (10 consecutive errors)');
+          
+          await db.user.update({
+            where: { id: userId },
+            data: {
+              loraTrainingStatus: 'failed',
+              loraTrainingError: 'Training service not responding',
+              updatedAt: new Date(),
+            },
+          });
+
+          await updateTrainingJobStatus(connectionString, trainingId, {
+            status: 'failed',
+            errorMessage: 'Training service not responding',
+            completedAt: new Date(),
+          });
+          
+          break;
+        }
+        
         continue;
       }
+
+      // Reset error counter on success
+      consecutiveErrors = 0;
 
       const statusData = await statusResponse.json();
       const status = statusData.status;
@@ -361,13 +518,40 @@ async function monitorTrainingStatus(
         
         break;
       }
+      else if (status === 'cancelled') {
+        console.log('🛑 Training was cancelled');
+        break;
+      }
       else if (status === 'training' || status === 'running') {
         // Still training, continue monitoring
         console.log(`⏳ Training in progress... (${statusData.progress || 'N/A'})`);
       }
       
     } catch (error) {
-      console.error('❌ Monitoring error:', error);
+      consecutiveErrors++;
+      console.error(`❌ Monitoring error (attempt ${attempts}, errors: ${consecutiveErrors}):`, error);
+      
+      // ถ้า error มากเกินไป ให้หยุด
+      if (consecutiveErrors >= 10) {
+        console.error('❌ Too many consecutive errors, stopping monitoring');
+        
+        await db.user.update({
+          where: { id: userId },
+          data: {
+            loraTrainingStatus: 'failed',
+            loraTrainingError: 'Monitoring failed: ' + (error as Error).message,
+            updatedAt: new Date(),
+          },
+        });
+
+        await updateTrainingJobStatus(connectionString, trainingId, {
+          status: 'failed',
+          errorMessage: 'Monitoring failed: ' + (error as Error).message,
+          completedAt: new Date(),
+        });
+        
+        break;
+      }
     }
   }
   
@@ -390,6 +574,8 @@ async function monitorTrainingStatus(
       completedAt: new Date(),
     });
   }
+  
+  console.log(`✅ Monitoring completed for ${trainingId}`);
 }
 
 async function logTrainingJob(
