@@ -1,5 +1,5 @@
 // apps/app/app/api/lora/train/route.ts
-// ✅ FIXED: Use EXTERNAL URL because Vercel cannot reach Northflank internal network
+// ✅ FIXED: Better error handling + Retry logic + Method validation
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
@@ -8,10 +8,9 @@ import { database as db } from '@repo/database';
 const NORTHFLANK_API_TOKEN = process.env.NORTHFLANK_API_TOKEN!;
 const OLLAMA_PROJECT_ID = process.env.OLLAMA_PROJECT_ID!;
 
-// ✅ CRITICAL FIX: Vercel needs EXTERNAL URL (not internal)
-// Get from Northflank: Services → Ollama → Ports → Public URL
+// ✅ Use EXTERNAL URL - Vercel cannot reach internal network
 const OLLAMA_EXTERNAL_URL = process.env.OLLAMA_TRAINING_URL || 
-  'https://train--ollama--fppvxj4w99rz.code.run'; // Your public URL from screenshot
+  'https://train--ollama--fppvxj4w99rz.code.run';
 
 console.log('🔗 Ollama Training URL:', OLLAMA_EXTERNAL_URL);
 
@@ -109,63 +108,116 @@ export async function POST(request: NextRequest) {
       totalSamples: totalData,
     });
 
-    // ✅ Call Ollama training endpoint with EXTERNAL URL
+    // ✅ CRITICAL FIX: Send training request with proper validation
+    const trainingPayload = {
+      user_id: user.id,
+      adapter_version: adapterVersion,
+      training_id: trainingId,
+      postgres_uri: connectionString,
+      base_model: 'mistral',
+      output_dir: `/models/adapters/${user.id}/${adapterVersion}`,
+    };
+
     console.log(`📤 Sending request to: ${OLLAMA_EXTERNAL_URL}/api/train`);
+    console.log(`📦 Payload keys:`, Object.keys(trainingPayload));
     
     try {
-      const trainingResponse = await fetch(`${OLLAMA_EXTERNAL_URL}/api/train`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          user_id: user.id,
-          adapter_version: adapterVersion,
-          training_id: trainingId,
-          postgres_uri: connectionString,
-          base_model: 'mistral',
-          output_dir: `/models/adapters/${user.id}/${adapterVersion}`,
-        }),
-        signal: AbortSignal.timeout(30000),
-      });
+      // ✅ Add retry logic
+      let lastError: Error | null = null;
+      let attempts = 0;
+      const maxAttempts = 3;
 
-      if (!trainingResponse.ok) {
-        const errorText = await trainingResponse.text();
-        console.error('❌ Training request failed:', {
-          status: trainingResponse.status,
-          statusText: trainingResponse.statusText,
-          url: `${OLLAMA_EXTERNAL_URL}/api/train`,
-          body: errorText.substring(0, 500),
-        });
-        
-        throw new Error(`Training service error: ${trainingResponse.status} - ${errorText.substring(0, 200)}`);
+      while (attempts < maxAttempts) {
+        attempts++;
+        console.log(`🔄 Attempt ${attempts}/${maxAttempts}`);
+
+        try {
+          const trainingResponse = await fetch(`${OLLAMA_EXTERNAL_URL}/api/train`, {
+            method: 'POST', // ✅ CRITICAL: Explicitly set method
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: JSON.stringify(trainingPayload),
+            signal: AbortSignal.timeout(30000), // 30 second timeout
+            // ✅ CRITICAL: Prevent redirects that might change method
+            redirect: 'manual',
+          });
+
+          // ✅ Check for redirects
+          if (trainingResponse.status >= 300 && trainingResponse.status < 400) {
+            const location = trainingResponse.headers.get('location');
+            console.warn(`⚠️  Got redirect to: ${location}`);
+            console.warn(`⚠️  Original URL: ${OLLAMA_EXTERNAL_URL}/api/train`);
+            throw new Error(`Unexpected redirect to ${location} - check URL configuration`);
+          }
+
+          if (!trainingResponse.ok) {
+            const errorText = await trainingResponse.text();
+            console.error(`❌ Training request failed (attempt ${attempts}):`, {
+              status: trainingResponse.status,
+              statusText: trainingResponse.statusText,
+              url: `${OLLAMA_EXTERNAL_URL}/api/train`,
+              body: errorText.substring(0, 500),
+            });
+            
+            // If 405 Method Not Allowed, don't retry
+            if (trainingResponse.status === 405) {
+              throw new Error(`Method Not Allowed - Server expects POST but may be receiving GET. URL: ${OLLAMA_EXTERNAL_URL}/api/train`);
+            }
+
+            lastError = new Error(`Training service error: ${trainingResponse.status} - ${errorText.substring(0, 200)}`);
+            
+            // Wait before retry
+            if (attempts < maxAttempts) {
+              await new Promise(resolve => setTimeout(resolve, 2000 * attempts));
+              continue;
+            }
+            
+            throw lastError;
+          }
+
+          // ✅ Success!
+          const trainingData = await trainingResponse.json();
+          console.log('✅ Training started:', trainingData);
+
+          // Start monitoring
+          monitorTrainingStatus(
+            user.id,
+            trainingId,
+            adapterVersion,
+            connectionString
+          ).catch(console.error);
+
+          return NextResponse.json({
+            success: true,
+            status: 'training',
+            trainingId,
+            adapterVersion,
+            message: 'Training started successfully',
+            estimatedTime: '10-30 minutes',
+            stats: {
+              good: user.goodChannelCount,
+              bad: user.badChannelCount,
+              mcl: user.mclChainCount,
+              total: totalData,
+            },
+          });
+
+        } catch (attemptError) {
+          lastError = attemptError as Error;
+          console.error(`❌ Attempt ${attempts} failed:`, lastError.message);
+          
+          if (attempts >= maxAttempts) {
+            throw lastError;
+          }
+          
+          // Wait before retry
+          await new Promise(resolve => setTimeout(resolve, 2000 * attempts));
+        }
       }
 
-      const trainingData = await trainingResponse.json();
-      console.log('✅ Training started:', trainingData);
-
-      // Start monitoring
-      monitorTrainingStatus(
-        user.id,
-        trainingId,
-        adapterVersion,
-        connectionString
-      ).catch(console.error);
-
-      return NextResponse.json({
-        success: true,
-        status: 'training',
-        trainingId,
-        adapterVersion,
-        message: 'Training started successfully',
-        estimatedTime: '10-30 minutes',
-        stats: {
-          good: user.goodChannelCount,
-          bad: user.badChannelCount,
-          mcl: user.mclChainCount,
-          total: totalData,
-        },
-      });
+      throw lastError || new Error('All retry attempts failed');
 
     } catch (trainingError) {
       console.error('❌ Training start error:', trainingError);
@@ -209,6 +261,7 @@ async function checkOllamaHealth(): Promise<{
     const response = await fetch(`${OLLAMA_EXTERNAL_URL}/health`, {
       method: 'GET',
       signal: AbortSignal.timeout(10000),
+      redirect: 'manual', // ✅ Prevent redirect issues
     });
 
     if (!response.ok) {
@@ -234,7 +287,6 @@ async function checkOllamaHealth(): Promise<{
   } catch (error) {
     const err = error as Error;
     
-    // Network errors
     if (err.message.includes('ENOTFOUND') || err.message.includes('getaddrinfo')) {
       return {
         healthy: false,
