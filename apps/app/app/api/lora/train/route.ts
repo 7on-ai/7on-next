@@ -466,7 +466,7 @@ async function monitorTrainingStatus(
         `${OLLAMA_EXTERNAL_URL}/api/train/status/${trainingId}`,
         {
           method: 'GET',
-          signal: AbortSignal.timeout(10000),
+          // signal: AbortSignal.timeout(10000),
         }
       );
 
