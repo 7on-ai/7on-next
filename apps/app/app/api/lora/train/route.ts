@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
       adapter_version: adapterVersion,
       training_id: trainingId,
       postgres_uri: connectionString,
-      base_model: 'TinyLlama/TinyLlama-1.1B-Chat-v1.0',
+      base_model: 'mistral',
       output_dir: `/models/adapters/${user.id}/${adapterVersion}`,
     };
 
@@ -267,6 +267,14 @@ function startBackgroundMonitoringWithIntegration(
           }
         ).catch(err => {
           console.error(`⚠️  [${trainingId}] Fetch error:`, err.message);
+          
+          // ✅ Different error types
+          if (err.message.includes('ECONNRESET')) {
+            console.error('Connection reset - training service may have restarted');
+          } else if (err.message.includes('fetch failed')) {
+            console.error('Network error - DNS or connection issue');
+          }
+          
           return null;
         });
 
