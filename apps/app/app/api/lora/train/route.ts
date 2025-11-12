@@ -1,4 +1,6 @@
-// apps/app/app/api/lora/train/route.ts - FIXED: Better monitoring with error recovery
+// apps/app/app/api/lora/train/route.ts
+// Complete version with auto adapter integration
+
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { database as db } from '@repo/database';
@@ -166,9 +168,7 @@ export async function POST(request: NextRequest) {
           const trainingData = await trainingResponse.json();
           console.log('✅ Training started:', trainingData);
 
-          // ✅ Start monitoring in DETACHED background process
-          // Don't await - let it run independently
-          startBackgroundMonitoring(
+          startBackgroundMonitoringWithIntegration(
             user.id,
             trainingId,
             adapterVersion,
@@ -234,8 +234,8 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// ✅ NEW: Background monitoring that doesn't block response
-function startBackgroundMonitoring(
+// ===== Background monitoring with auto-integration =====
+function startBackgroundMonitoringWithIntegration(
   userId: string,
   trainingId: string,
   adapterVersion: string,
@@ -243,27 +243,24 @@ function startBackgroundMonitoring(
 ) {
   console.log(`🔍 Starting background monitoring: ${trainingId}`);
   
-  // Run in background without blocking
   (async () => {
-    const maxAttempts = 60; // 30 minutes max (60 * 30s)
+    const maxAttempts = 60;
     let attempts = 0;
     let consecutiveErrors = 0;
     const maxConsecutiveErrors = 5;
     
     while (attempts < maxAttempts) {
       try {
-        // Wait 30 seconds between checks
         await new Promise(resolve => setTimeout(resolve, 30000));
         attempts++;
         
         console.log(`🔍 [${trainingId}] Check ${attempts}/${maxAttempts}`);
         
-        // ✅ FIXED: Better error handling with retry logic
         const statusResponse = await fetch(
           `${OLLAMA_EXTERNAL_URL}/api/train/status/${trainingId}`,
           {
             method: 'GET',
-            signal: AbortSignal.timeout(15000), // 15s timeout
+            signal: AbortSignal.timeout(60000),
             headers: {
               'Accept': 'application/json',
             },
@@ -273,12 +270,10 @@ function startBackgroundMonitoring(
           return null;
         });
 
-        // If fetch failed
         if (!statusResponse) {
           consecutiveErrors++;
           console.warn(`⚠️  [${trainingId}] Connection failed (${consecutiveErrors}/${maxConsecutiveErrors})`);
           
-          // If too many consecutive errors, assume training failed
           if (consecutiveErrors >= maxConsecutiveErrors) {
             console.error(`❌ [${trainingId}] Too many connection errors, marking as failed`);
             
@@ -300,14 +295,11 @@ function startBackgroundMonitoring(
             break;
           }
           
-          // Continue to next attempt
           continue;
         }
 
-        // Reset error counter on successful connection
         consecutiveErrors = 0;
 
-        // Check response status
         if (!statusResponse.ok) {
           console.warn(`⚠️  [${trainingId}] Status check failed: ${statusResponse.status}`);
           continue;
@@ -316,10 +308,29 @@ function startBackgroundMonitoring(
         const statusData = await statusResponse.json();
         console.log(`📊 [${trainingId}] Status:`, statusData.status);
         
-        // Training completed
         if (statusData.status === 'completed' || statusData.status === 'success') {
           console.log(`✅ [${trainingId}] Training completed!`);
           
+          console.log(`🔗 Auto-integrating adapter...`);
+          const adapterPath = `/models/adapters/${userId}/${adapterVersion}`;
+          
+          const integrationSuccess = await storeAdapterInfoInPostgres(
+            connectionString,
+            {
+              userId,
+              adapterVersion,
+              adapterPath,
+              status: 'ready',
+              metadata: statusData.metadata,
+            }
+          );
+
+          if (integrationSuccess) {
+            console.log(`✅ [${trainingId}] Adapter integrated successfully`);
+          } else {
+            console.warn(`⚠️  [${trainingId}] Integration failed (non-critical)`);
+          }
+
           await db.user.update({
             where: { id: userId },
             data: {
@@ -333,13 +344,15 @@ function startBackgroundMonitoring(
           await updateTrainingJobStatus(connectionString, trainingId, {
             status: 'completed',
             completedAt: new Date(),
-            metadata: statusData.metadata || {},
+            metadata: {
+              ...statusData.metadata,
+              adapter_path: adapterPath,
+            },
           });
           
           break;
         }
         
-        // Training failed
         if (statusData.status === 'failed') {
           console.error(`❌ [${trainingId}] Training failed:`, statusData.error);
           
@@ -361,13 +374,10 @@ function startBackgroundMonitoring(
           break;
         }
         
-        // Still running - continue monitoring
-        
       } catch (error) {
         consecutiveErrors++;
         console.error(`❌ [${trainingId}] Monitoring error (${consecutiveErrors}/${maxConsecutiveErrors}):`, error);
         
-        // If too many errors, give up
         if (consecutiveErrors >= maxConsecutiveErrors) {
           console.error(`❌ [${trainingId}] Too many monitoring errors, giving up`);
           
@@ -385,7 +395,6 @@ function startBackgroundMonitoring(
       }
     }
     
-    // Timeout reached
     if (attempts >= maxAttempts) {
       console.warn(`⏰ [${trainingId}] Monitoring timeout after ${maxAttempts} attempts`);
       
@@ -403,6 +412,65 @@ function startBackgroundMonitoring(
   })().catch(err => {
     console.error(`💥 [${trainingId}] Background monitoring crashed:`, err);
   });
+}
+
+// ===== Store adapter info in Postgres =====
+async function storeAdapterInfoInPostgres(
+  connectionString: string,
+  config: {
+    userId: string;
+    adapterVersion: string;
+    adapterPath: string;
+    status: string;
+    metadata?: any;
+  }
+): Promise<boolean> {
+  const { Client } = require('pg');
+  const client = new Client({ connectionString });
+
+  try {
+    await client.connect();
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_data_schema.lora_adapter_info (
+        user_id TEXT PRIMARY KEY,
+        adapter_version TEXT NOT NULL,
+        adapter_path TEXT NOT NULL,
+        status TEXT NOT NULL,
+        metadata JSONB DEFAULT '{}',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    await client.query(`
+      INSERT INTO user_data_schema.lora_adapter_info 
+        (user_id, adapter_version, adapter_path, status, metadata, updated_at)
+      VALUES ($1, $2, $3, $4, $5, NOW())
+      ON CONFLICT (user_id) 
+      DO UPDATE SET 
+        adapter_version = $2,
+        adapter_path = $3,
+        status = $4,
+        metadata = $5,
+        updated_at = NOW()
+    `, [
+      config.userId,
+      config.adapterVersion,
+      config.adapterPath,
+      config.status,
+      JSON.stringify(config.metadata || {}),
+    ]);
+
+    console.log(`✅ Adapter info stored in Postgres for user ${config.userId}`);
+    return true;
+
+  } catch (error) {
+    console.error('❌ Postgres storage error:', error);
+    return false;
+  } finally {
+    await client.end();
+  }
 }
 
 // ===== Helper: Check Ollama Health =====
