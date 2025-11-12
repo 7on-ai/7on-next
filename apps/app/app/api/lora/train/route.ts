@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
       adapter_version: adapterVersion,
       training_id: trainingId,
       postgres_uri: connectionString,
-      base_model: 'mistral',
+      base_model: 'mistralai/Mistral-7B-Instruct-v0.2',
       output_dir: `/models/adapters/${user.id}/${adapterVersion}`,
     };
 
