@@ -1,14 +1,9 @@
-// apps/app/app/api/lora/train/route.ts
-// ✅ FIXED: Better error handling + Retry logic + Method validation
-
+// apps/app/app/api/lora/train/route.ts - FIXED: Better monitoring with error recovery
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { database as db } from '@repo/database';
 
 const NORTHFLANK_API_TOKEN = process.env.NORTHFLANK_API_TOKEN!;
-const OLLAMA_PROJECT_ID = process.env.OLLAMA_PROJECT_ID!;
-
-// ✅ Use EXTERNAL URL - Vercel cannot reach internal network
 const OLLAMA_EXTERNAL_URL = process.env.OLLAMA_TRAINING_URL || 
   'https://train--ollama--fppvxj4w99rz.code.run';
 
@@ -61,7 +56,6 @@ export async function POST(request: NextRequest) {
       throw new Error('Cannot get database connection');
     }
 
-    // ✅ Check Ollama health BEFORE starting
     console.log('🏥 Checking Ollama service health...');
     const healthCheck = await checkOllamaHealth();
     
@@ -108,7 +102,6 @@ export async function POST(request: NextRequest) {
       totalSamples: totalData,
     });
 
-    // ✅ CRITICAL FIX: Send training request with proper validation
     const trainingPayload = {
       user_id: user.id,
       adapter_version: adapterVersion,
@@ -122,7 +115,6 @@ export async function POST(request: NextRequest) {
     console.log(`📦 Payload keys:`, Object.keys(trainingPayload));
     
     try {
-      // ✅ Add retry logic
       let lastError: Error | null = null;
       let attempts = 0;
       const maxAttempts = 3;
@@ -133,23 +125,20 @@ export async function POST(request: NextRequest) {
 
         try {
           const trainingResponse = await fetch(`${OLLAMA_EXTERNAL_URL}/api/train`, {
-            method: 'POST', // ✅ CRITICAL: Explicitly set method
+            method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               'Accept': 'application/json',
             },
             body: JSON.stringify(trainingPayload),
-            signal: AbortSignal.timeout(30000), // 30 second timeout
-            // ✅ CRITICAL: Prevent redirects that might change method
+            signal: AbortSignal.timeout(30000),
             redirect: 'manual',
           });
 
-          // ✅ Check for redirects
           if (trainingResponse.status >= 300 && trainingResponse.status < 400) {
             const location = trainingResponse.headers.get('location');
             console.warn(`⚠️  Got redirect to: ${location}`);
-            console.warn(`⚠️  Original URL: ${OLLAMA_EXTERNAL_URL}/api/train`);
-            throw new Error(`Unexpected redirect to ${location} - check URL configuration`);
+            throw new Error(`Unexpected redirect to ${location}`);
           }
 
           if (!trainingResponse.ok) {
@@ -157,18 +146,15 @@ export async function POST(request: NextRequest) {
             console.error(`❌ Training request failed (attempt ${attempts}):`, {
               status: trainingResponse.status,
               statusText: trainingResponse.statusText,
-              url: `${OLLAMA_EXTERNAL_URL}/api/train`,
               body: errorText.substring(0, 500),
             });
             
-            // If 405 Method Not Allowed, don't retry
             if (trainingResponse.status === 405) {
-              throw new Error(`Method Not Allowed - Server expects POST but may be receiving GET. URL: ${OLLAMA_EXTERNAL_URL}/api/train`);
+              throw new Error(`Method Not Allowed - URL: ${OLLAMA_EXTERNAL_URL}/api/train`);
             }
 
             lastError = new Error(`Training service error: ${trainingResponse.status} - ${errorText.substring(0, 200)}`);
             
-            // Wait before retry
             if (attempts < maxAttempts) {
               await new Promise(resolve => setTimeout(resolve, 2000 * attempts));
               continue;
@@ -177,17 +163,17 @@ export async function POST(request: NextRequest) {
             throw lastError;
           }
 
-          // ✅ Success!
           const trainingData = await trainingResponse.json();
           console.log('✅ Training started:', trainingData);
 
-          // Start monitoring
-          monitorTrainingStatus(
+          // ✅ Start monitoring in DETACHED background process
+          // Don't await - let it run independently
+          startBackgroundMonitoring(
             user.id,
             trainingId,
             adapterVersion,
             connectionString
-          ).catch(console.error);
+          );
 
           return NextResponse.json({
             success: true,
@@ -212,7 +198,6 @@ export async function POST(request: NextRequest) {
             throw lastError;
           }
           
-          // Wait before retry
           await new Promise(resolve => setTimeout(resolve, 2000 * attempts));
         }
       }
@@ -249,6 +234,177 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// ✅ NEW: Background monitoring that doesn't block response
+function startBackgroundMonitoring(
+  userId: string,
+  trainingId: string,
+  adapterVersion: string,
+  connectionString: string
+) {
+  console.log(`🔍 Starting background monitoring: ${trainingId}`);
+  
+  // Run in background without blocking
+  (async () => {
+    const maxAttempts = 60; // 30 minutes max (60 * 30s)
+    let attempts = 0;
+    let consecutiveErrors = 0;
+    const maxConsecutiveErrors = 5;
+    
+    while (attempts < maxAttempts) {
+      try {
+        // Wait 30 seconds between checks
+        await new Promise(resolve => setTimeout(resolve, 30000));
+        attempts++;
+        
+        console.log(`🔍 [${trainingId}] Check ${attempts}/${maxAttempts}`);
+        
+        // ✅ FIXED: Better error handling with retry logic
+        const statusResponse = await fetch(
+          `${OLLAMA_EXTERNAL_URL}/api/train/status/${trainingId}`,
+          {
+            method: 'GET',
+            signal: AbortSignal.timeout(15000), // 15s timeout
+            headers: {
+              'Accept': 'application/json',
+            },
+          }
+        ).catch(err => {
+          console.error(`⚠️  [${trainingId}] Fetch error:`, err.message);
+          return null;
+        });
+
+        // If fetch failed
+        if (!statusResponse) {
+          consecutiveErrors++;
+          console.warn(`⚠️  [${trainingId}] Connection failed (${consecutiveErrors}/${maxConsecutiveErrors})`);
+          
+          // If too many consecutive errors, assume training failed
+          if (consecutiveErrors >= maxConsecutiveErrors) {
+            console.error(`❌ [${trainingId}] Too many connection errors, marking as failed`);
+            
+            await db.user.update({
+              where: { id: userId },
+              data: {
+                loraTrainingStatus: 'failed',
+                loraTrainingError: 'Training service connection lost',
+                updatedAt: new Date(),
+              },
+            });
+            
+            await updateTrainingJobStatus(connectionString, trainingId, {
+              status: 'failed',
+              errorMessage: 'Training service connection lost after multiple retries',
+              completedAt: new Date(),
+            });
+            
+            break;
+          }
+          
+          // Continue to next attempt
+          continue;
+        }
+
+        // Reset error counter on successful connection
+        consecutiveErrors = 0;
+
+        // Check response status
+        if (!statusResponse.ok) {
+          console.warn(`⚠️  [${trainingId}] Status check failed: ${statusResponse.status}`);
+          continue;
+        }
+
+        const statusData = await statusResponse.json();
+        console.log(`📊 [${trainingId}] Status:`, statusData.status);
+        
+        // Training completed
+        if (statusData.status === 'completed' || statusData.status === 'success') {
+          console.log(`✅ [${trainingId}] Training completed!`);
+          
+          await db.user.update({
+            where: { id: userId },
+            data: {
+              loraTrainingStatus: 'completed',
+              loraLastTrainedAt: new Date(),
+              loraTrainingError: null,
+              updatedAt: new Date(),
+            },
+          });
+          
+          await updateTrainingJobStatus(connectionString, trainingId, {
+            status: 'completed',
+            completedAt: new Date(),
+            metadata: statusData.metadata || {},
+          });
+          
+          break;
+        }
+        
+        // Training failed
+        if (statusData.status === 'failed') {
+          console.error(`❌ [${trainingId}] Training failed:`, statusData.error);
+          
+          await db.user.update({
+            where: { id: userId },
+            data: {
+              loraTrainingStatus: 'failed',
+              loraTrainingError: statusData.error || 'Training failed',
+              updatedAt: new Date(),
+            },
+          });
+          
+          await updateTrainingJobStatus(connectionString, trainingId, {
+            status: 'failed',
+            errorMessage: statusData.error || 'Training failed',
+            completedAt: new Date(),
+          });
+          
+          break;
+        }
+        
+        // Still running - continue monitoring
+        
+      } catch (error) {
+        consecutiveErrors++;
+        console.error(`❌ [${trainingId}] Monitoring error (${consecutiveErrors}/${maxConsecutiveErrors}):`, error);
+        
+        // If too many errors, give up
+        if (consecutiveErrors >= maxConsecutiveErrors) {
+          console.error(`❌ [${trainingId}] Too many monitoring errors, giving up`);
+          
+          await db.user.update({
+            where: { id: userId },
+            data: {
+              loraTrainingStatus: 'failed',
+              loraTrainingError: 'Monitoring failed: ' + (error as Error).message,
+              updatedAt: new Date(),
+            },
+          });
+          
+          break;
+        }
+      }
+    }
+    
+    // Timeout reached
+    if (attempts >= maxAttempts) {
+      console.warn(`⏰ [${trainingId}] Monitoring timeout after ${maxAttempts} attempts`);
+      
+      await db.user.update({
+        where: { id: userId },
+        data: {
+          loraTrainingStatus: 'failed',
+          loraTrainingError: 'Training timeout - please check Ollama logs',
+          updatedAt: new Date(),
+        },
+      });
+    }
+    
+    console.log(`🏁 [${trainingId}] Monitoring ended`);
+  })().catch(err => {
+    console.error(`💥 [${trainingId}] Background monitoring crashed:`, err);
+  });
+}
+
 // ===== Helper: Check Ollama Health =====
 async function checkOllamaHealth(): Promise<{ 
   healthy: boolean; 
@@ -261,7 +417,7 @@ async function checkOllamaHealth(): Promise<{
     const response = await fetch(`${OLLAMA_EXTERNAL_URL}/health`, {
       method: 'GET',
       signal: AbortSignal.timeout(10000),
-      redirect: 'manual', // ✅ Prevent redirect issues
+      redirect: 'manual',
     });
 
     if (!response.ok) {
@@ -446,63 +602,6 @@ async function autoApproveData(connectionString: string, userId: string) {
   }
 }
 
-async function monitorTrainingStatus(
-  userId: string,
-  trainingId: string,
-  adapterVersion: string,
-  connectionString: string
-) {
-  console.log(`🔍 Monitoring: ${trainingId}`);
-  
-  const maxAttempts = 60;
-  let attempts = 0;
-  
-  while (attempts < maxAttempts) {
-    await new Promise(resolve => setTimeout(resolve, 30000));
-    attempts++;
-    
-    try {
-      const statusResponse = await fetch(
-        `${OLLAMA_EXTERNAL_URL}/api/train/status/${trainingId}`,
-        {
-          method: 'GET',
-          // signal: AbortSignal.timeout(10000),
-        }
-      );
-
-      if (!statusResponse.ok) continue;
-
-      const statusData = await statusResponse.json();
-      
-      if (statusData.status === 'completed' || statusData.status === 'success') {
-        await db.user.update({
-          where: { id: userId },
-          data: {
-            loraTrainingStatus: 'completed',
-            loraLastTrainedAt: new Date(),
-            loraTrainingError: null,
-          },
-        });
-        break;
-      }
-      
-      if (statusData.status === 'failed') {
-        await db.user.update({
-          where: { id: userId },
-          data: {
-            loraTrainingStatus: 'failed',
-            loraTrainingError: statusData.error || 'Training failed',
-          },
-        });
-        break;
-      }
-      
-    } catch (error) {
-      console.error('Monitoring error:', error);
-    }
-  }
-}
-
 async function logTrainingJob(connectionString: string, data: any) {
   const { Client } = require('pg');
   const client = new Client({ connectionString });
@@ -543,6 +642,10 @@ async function updateTrainingJobStatus(connectionString: string, jobId: string, 
     if (update.errorMessage) {
       setClauses.push(`error_message = $${i++}`);
       values.push(update.errorMessage);
+    }
+    if (update.metadata) {
+      setClauses.push(`metadata = $${i++}`);
+      values.push(JSON.stringify(update.metadata));
     }
     
     values.push(jobId);
