@@ -1,15 +1,18 @@
 // apps/app/app/api/lora/train/route.ts
-// Complete version with auto adapter integration
+// ✅ UPDATED: ใช้ Northflank Job แทน Ollama Service
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { database as db } from '@repo/database';
+import {
+  triggerTrainingJob,
+  getJobRunStatus,
+  getJobRunLogs,
+  cancelJobRun,
+  extractMetadataFromLogs,
+} from '@/lib/northflank-job';
 
 const NORTHFLANK_API_TOKEN = process.env.NORTHFLANK_API_TOKEN!;
-const OLLAMA_EXTERNAL_URL = process.env.OLLAMA_TRAINING_URL || 
-  'https://train--ollama--fppvxj4w99rz.code.run';
-
-console.log('🔗 Ollama Training URL:', OLLAMA_EXTERNAL_URL);
 
 // ===== POST: Start Training =====
 export async function POST(request: NextRequest) {
@@ -36,6 +39,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Project not found' }, { status: 400 });
     }
 
+    // Check if already training
     if (user.loraTrainingStatus === 'training') {
       return NextResponse.json({
         error: 'Training already in progress',
@@ -43,6 +47,7 @@ export async function POST(request: NextRequest) {
       }, { status: 409 });
     }
 
+    // Validate minimum data
     const totalData = user.goodChannelCount + user.badChannelCount + user.mclChainCount;
     
     if (totalData < 10) {
@@ -52,35 +57,32 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
+    if (user.goodChannelCount < 5) {
+      return NextResponse.json({
+        error: 'Not enough good channel data (need at least 5 samples for quality training)',
+        current: user.goodChannelCount,
+      }, { status: 400 });
+    }
+
+    // Get Postgres connection
+    console.log('📝 Getting Postgres connection...');
     const connectionString = await getPostgresConnectionString(user.northflankProjectId);
     
     if (!connectionString) {
       throw new Error('Cannot get database connection');
     }
 
-    console.log('🏥 Checking Ollama service health...');
-    const healthCheck = await checkOllamaHealth();
-    
-    if (!healthCheck.healthy) {
-      console.error('❌ Ollama not ready:', healthCheck.error);
-      
-      return NextResponse.json({
-        error: 'Training service not available',
-        details: healthCheck.error,
-        suggestion: healthCheck.suggestion,
-      }, { status: 503 });
-    }
-
-    console.log('✅ Ollama service is healthy');
-
+    // Auto-approve data
     console.log('📝 Auto-approving data...');
     await autoApproveData(connectionString, user.id);
 
+    // Generate version
     const adapterVersion = `v${Date.now()}`;
     const trainingId = `train-${user.id.slice(0, 8)}-${adapterVersion}`;
 
     console.log(`🚀 Starting training: ${trainingId}`);
 
+    // Update status to training
     await db.user.update({
       where: { id: user.id },
       data: {
@@ -91,10 +93,11 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Log to database
     await logTrainingJob(connectionString, {
       userId: user.id,
       jobId: trainingId,
-      jobName: trainingId,
+      jobName: 'user-lora-training',
       adapterVersion,
       datasetComposition: {
         good: user.goodChannelCount,
@@ -104,126 +107,67 @@ export async function POST(request: NextRequest) {
       totalSamples: totalData,
     });
 
-    const trainingPayload = {
-      user_id: user.id,
-      adapter_version: adapterVersion,
-      training_id: trainingId,
-      postgres_uri: connectionString,
-      base_model: 'mistralai/Mistral-7B-v0.1',
-      output_dir: `/models/adapters/${user.id}/${adapterVersion}`,
-    };
-
-    console.log(`📤 Sending request to: ${OLLAMA_EXTERNAL_URL}/api/train`);
-    console.log(`📦 Payload keys:`, Object.keys(trainingPayload));
+    // ✅ Trigger Northflank Job
+    console.log('🚀 Triggering Northflank job...');
     
+    let jobRun;
     try {
-      let lastError: Error | null = null;
-      let attempts = 0;
-      const maxAttempts = 3;
+      jobRun = await triggerTrainingJob({
+        projectId: user.northflankProjectId,
+        userId: user.id,
+        adapterVersion,
+        postgresUri: connectionString,
+        modelName: 'TinyLlama/TinyLlama-1.1B-Chat-v1.0',
+      });
 
-      while (attempts < maxAttempts) {
-        attempts++;
-        console.log(`🔄 Attempt ${attempts}/${maxAttempts}`);
+      console.log('✅ Job triggered:', jobRun);
 
-        try {
-          const trainingResponse = await fetch(`${OLLAMA_EXTERNAL_URL}/api/train`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
-            body: JSON.stringify(trainingPayload),
-            signal: AbortSignal.timeout(30000),
-            redirect: 'manual',
-          });
-
-          if (trainingResponse.status >= 300 && trainingResponse.status < 400) {
-            const location = trainingResponse.headers.get('location');
-            console.warn(`⚠️  Got redirect to: ${location}`);
-            throw new Error(`Unexpected redirect to ${location}`);
-          }
-
-          if (!trainingResponse.ok) {
-            const errorText = await trainingResponse.text();
-            console.error(`❌ Training request failed (attempt ${attempts}):`, {
-              status: trainingResponse.status,
-              statusText: trainingResponse.statusText,
-              body: errorText.substring(0, 500),
-            });
-            
-            if (trainingResponse.status === 405) {
-              throw new Error(`Method Not Allowed - URL: ${OLLAMA_EXTERNAL_URL}/api/train`);
-            }
-
-            lastError = new Error(`Training service error: ${trainingResponse.status} - ${errorText.substring(0, 200)}`);
-            
-            if (attempts < maxAttempts) {
-              await new Promise(resolve => setTimeout(resolve, 2000 * attempts));
-              continue;
-            }
-            
-            throw lastError;
-          }
-
-          const trainingData = await trainingResponse.json();
-          console.log('✅ Training started:', trainingData);
-
-          startBackgroundMonitoringWithIntegration(
-            user.id,
-            trainingId,
-            adapterVersion,
-            connectionString
-          );
-
-          return NextResponse.json({
-            success: true,
-            status: 'training',
-            trainingId,
-            adapterVersion,
-            message: 'Training started successfully',
-            estimatedTime: '10-30 minutes',
-            stats: {
-              good: user.goodChannelCount,
-              bad: user.badChannelCount,
-              mcl: user.mclChainCount,
-              total: totalData,
-            },
-          });
-
-        } catch (attemptError) {
-          lastError = attemptError as Error;
-          console.error(`❌ Attempt ${attempts} failed:`, lastError.message);
-          
-          if (attempts >= maxAttempts) {
-            throw lastError;
-          }
-          
-          await new Promise(resolve => setTimeout(resolve, 2000 * attempts));
-        }
-      }
-
-      throw lastError || new Error('All retry attempts failed');
-
-    } catch (trainingError) {
-      console.error('❌ Training start error:', trainingError);
+    } catch (triggerError) {
+      console.error('❌ Job trigger failed:', triggerError);
       
       await db.user.update({
         where: { id: user.id },
         data: {
           loraTrainingStatus: 'failed',
-          loraTrainingError: (trainingError as Error).message,
+          loraTrainingError: `Failed to start training: ${(triggerError as Error).message}`,
           updatedAt: new Date(),
         },
       });
 
       await updateTrainingJobStatus(connectionString, trainingId, {
         status: 'failed',
-        errorMessage: (trainingError as Error).message,
+        errorMessage: (triggerError as Error).message,
         completedAt: new Date(),
       });
 
-      throw trainingError;
+      throw triggerError;
     }
+
+    // Start background monitoring
+    startBackgroundMonitoring(
+      user.id,
+      trainingId,
+      adapterVersion,
+      connectionString,
+      user.northflankProjectId,
+      jobRun.runId
+    );
+
+    return NextResponse.json({
+      success: true,
+      status: 'training',
+      trainingId,
+      adapterVersion,
+      runId: jobRun.runId,
+      message: 'Training started successfully',
+      estimatedTime: '10-30 minutes',
+      stats: {
+        good: user.goodChannelCount,
+        bad: user.badChannelCount,
+        mcl: user.mclChainCount,
+        total: totalData,
+      },
+    });
 
   } catch (error) {
     console.error('❌ Training API error:', error);
@@ -234,117 +178,50 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// ===== Background monitoring with auto-integration =====
-function startBackgroundMonitoringWithIntegration(
+// ===== Background Monitoring =====
+function startBackgroundMonitoring(
   userId: string,
   trainingId: string,
   adapterVersion: string,
-  connectionString: string
+  connectionString: string,
+  projectId: string,
+  runId: string
 ) {
-  console.log(`🔍 Starting background monitoring: ${trainingId}`);
+  console.log(`🔍 Starting background monitoring for run: ${runId}`);
   
   (async () => {
-    const maxAttempts = 60;
+    const maxAttempts = 60; // 30 minutes (30s interval)
     let attempts = 0;
     let consecutiveErrors = 0;
     const maxConsecutiveErrors = 5;
+    const jobId = 'user-lora-training';
     
     while (attempts < maxAttempts) {
       try {
-        await new Promise(resolve => setTimeout(resolve, 30000));
+        await new Promise(resolve => setTimeout(resolve, 30000)); // 30s
         attempts++;
         
-        console.log(`🔍 [${trainingId}] Check ${attempts}/${maxAttempts}`);
+        console.log(`🔍 [${runId}] Check ${attempts}/${maxAttempts}`);
         
-        const statusResponse = await fetch(
-          `${OLLAMA_EXTERNAL_URL}/api/train/status/${trainingId}`,
-          {
-            method: 'GET',
-            signal: AbortSignal.timeout(60000),
-            headers: {
-              'Accept': 'application/json',
-            },
-          }
-        ).catch(err => {
-          console.error(`⚠️  [${trainingId}] Fetch error:`, err.message);
-          
-          // ✅ Different error types
-          if (err.message.includes('ECONNRESET')) {
-            console.error('Connection reset - training service may have restarted');
-          } else if (err.message.includes('fetch failed')) {
-            console.error('Network error - DNS or connection issue');
-          }
-          
-          return null;
-        });
-
-        if (!statusResponse) {
-          consecutiveErrors++;
-          console.warn(`⚠️  [${trainingId}] Connection failed (${consecutiveErrors}/${maxConsecutiveErrors})`);
-          
-          if (consecutiveErrors >= maxConsecutiveErrors) {
-            console.error(`❌ [${trainingId}] Too many connection errors, marking as failed`);
-            
-            await db.user.update({
-              where: { id: userId },
-              data: {
-                loraTrainingStatus: 'failed',
-                loraTrainingError: 'Training service connection lost',
-                updatedAt: new Date(),
-              },
-            });
-            
-            await updateTrainingJobStatus(connectionString, trainingId, {
-              status: 'failed',
-              errorMessage: 'Training service connection lost after multiple retries',
-              completedAt: new Date(),
-            });
-            
-            break;
-          }
-          
-          continue;
-        }
-
-        consecutiveErrors = 0;
-
-        if (!statusResponse.ok) {
-          // ✅ Handle 404 - training ID not found yet
-          if (statusResponse.status === 404) {
-            console.warn(`⚠️  [${trainingId}] Status not found yet (may still be starting)`);
-            continue;
-          }
-          
-          console.warn(`⚠️  [${trainingId}] Status check failed: ${statusResponse.status}`);
-          continue;
-        }
-
-        const statusData = await statusResponse.json();
-        console.log(`📊 [${trainingId}] Status:`, statusData.status);
+        // Get job run status
+        const status = await getJobRunStatus(projectId, jobId, runId);
         
-        if (statusData.status === 'completed' || statusData.status === 'success') {
-          console.log(`✅ [${trainingId}] Training completed!`);
+        consecutiveErrors = 0; // Reset on success
+        
+        console.log(`📊 [${runId}] Status: ${status.status}`);
+        
+        if (status.status === 'succeeded') {
+          console.log(`✅ [${runId}] Training completed!`);
           
-          console.log(`🔗 Auto-integrating adapter...`);
-          const adapterPath = `/models/adapters/${userId}/${adapterVersion}`;
+          // Get logs to extract metadata
+          const logs = await getJobRunLogs(projectId, jobId, runId, 5000);
+          const metadata = extractMetadataFromLogs(logs.logs);
           
-          const integrationSuccess = await storeAdapterInfoInPostgres(
-            connectionString,
-            {
-              userId,
-              adapterVersion,
-              adapterPath,
-              status: 'ready',
-              metadata: statusData.metadata,
-            }
-          );
-
-          if (integrationSuccess) {
-            console.log(`✅ [${trainingId}] Adapter integrated successfully`);
-          } else {
-            console.warn(`⚠️  [${trainingId}] Integration failed (non-critical)`);
+          if (metadata) {
+            console.log('📊 Training metadata:', metadata);
           }
-
+          
+          // Update database
           await db.user.update({
             where: { id: userId },
             data: {
@@ -358,30 +235,51 @@ function startBackgroundMonitoringWithIntegration(
           await updateTrainingJobStatus(connectionString, trainingId, {
             status: 'completed',
             completedAt: new Date(),
-            metadata: {
-              ...statusData.metadata,
-              adapter_path: adapterPath,
-            },
+            metadata: metadata || {},
           });
           
           break;
         }
         
-        if (statusData.status === 'failed') {
-          console.error(`❌ [${trainingId}] Training failed:`, statusData.error);
+        if (status.status === 'failed') {
+          console.error(`❌ [${runId}] Training failed`);
+          
+          // Get logs for error details
+          const logs = await getJobRunLogs(projectId, jobId, runId, 1000);
+          const errorMessage = status.error || 'Training failed - check logs';
           
           await db.user.update({
             where: { id: userId },
             data: {
               loraTrainingStatus: 'failed',
-              loraTrainingError: statusData.error || 'Training failed',
+              loraTrainingError: errorMessage,
               updatedAt: new Date(),
             },
           });
           
           await updateTrainingJobStatus(connectionString, trainingId, {
             status: 'failed',
-            errorMessage: statusData.error || 'Training failed',
+            errorMessage: errorMessage,
+            completedAt: new Date(),
+          });
+          
+          break;
+        }
+        
+        if (status.status === 'cancelled') {
+          console.log(`⚠️ [${runId}] Training cancelled`);
+          
+          await db.user.update({
+            where: { id: userId },
+            data: {
+              loraTrainingStatus: 'cancelled',
+              loraTrainingError: 'Cancelled by user',
+              updatedAt: new Date(),
+            },
+          });
+          
+          await updateTrainingJobStatus(connectionString, trainingId, {
+            status: 'cancelled',
             completedAt: new Date(),
           });
           
@@ -390,10 +288,10 @@ function startBackgroundMonitoringWithIntegration(
         
       } catch (error) {
         consecutiveErrors++;
-        console.error(`❌ [${trainingId}] Monitoring error (${consecutiveErrors}/${maxConsecutiveErrors}):`, error);
+        console.error(`❌ [${runId}] Monitoring error (${consecutiveErrors}/${maxConsecutiveErrors}):`, error);
         
         if (consecutiveErrors >= maxConsecutiveErrors) {
-          console.error(`❌ [${trainingId}] Too many monitoring errors, giving up`);
+          console.error(`❌ [${runId}] Too many errors, giving up`);
           
           await db.user.update({
             where: { id: userId },
@@ -410,151 +308,22 @@ function startBackgroundMonitoringWithIntegration(
     }
     
     if (attempts >= maxAttempts) {
-      console.warn(`⏰ [${trainingId}] Monitoring timeout after ${maxAttempts} attempts`);
+      console.warn(`⏰ [${runId}] Monitoring timeout`);
       
       await db.user.update({
         where: { id: userId },
         data: {
           loraTrainingStatus: 'failed',
-          loraTrainingError: 'Training timeout - please check Ollama logs',
+          loraTrainingError: 'Training timeout - may still be running',
           updatedAt: new Date(),
         },
       });
     }
     
-    console.log(`🏁 [${trainingId}] Monitoring ended`);
+    console.log(`🏁 [${runId}] Monitoring ended`);
   })().catch(err => {
-    console.error(`💥 [${trainingId}] Background monitoring crashed:`, err);
+    console.error(`💥 [${runId}] Background monitoring crashed:`, err);
   });
-}
-
-// ===== Store adapter info in Postgres =====
-async function storeAdapterInfoInPostgres(
-  connectionString: string,
-  config: {
-    userId: string;
-    adapterVersion: string;
-    adapterPath: string;
-    status: string;
-    metadata?: any;
-  }
-): Promise<boolean> {
-  const { Client } = require('pg');
-  const client = new Client({ connectionString });
-
-  try {
-    await client.connect();
-
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS user_data_schema.lora_adapter_info (
-        user_id TEXT PRIMARY KEY,
-        adapter_version TEXT NOT NULL,
-        adapter_path TEXT NOT NULL,
-        status TEXT NOT NULL,
-        metadata JSONB DEFAULT '{}',
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-      )
-    `);
-
-    await client.query(`
-      INSERT INTO user_data_schema.lora_adapter_info 
-        (user_id, adapter_version, adapter_path, status, metadata, updated_at)
-      VALUES ($1, $2, $3, $4, $5, NOW())
-      ON CONFLICT (user_id) 
-      DO UPDATE SET 
-        adapter_version = $2,
-        adapter_path = $3,
-        status = $4,
-        metadata = $5,
-        updated_at = NOW()
-    `, [
-      config.userId,
-      config.adapterVersion,
-      config.adapterPath,
-      config.status,
-      JSON.stringify(config.metadata || {}),
-    ]);
-
-    console.log(`✅ Adapter info stored in Postgres for user ${config.userId}`);
-    return true;
-
-  } catch (error) {
-    console.error('❌ Postgres storage error:', error);
-    return false;
-  } finally {
-    await client.end();
-  }
-}
-
-// ===== Helper: Check Ollama Health =====
-async function checkOllamaHealth(): Promise<{ 
-  healthy: boolean; 
-  error?: string;
-  suggestion?: string;
-}> {
-  try {
-    console.log(`Checking: ${OLLAMA_EXTERNAL_URL}/health`);
-    
-    const response = await fetch(`${OLLAMA_EXTERNAL_URL}/health`, {
-      method: 'GET',
-      signal: AbortSignal.timeout(10000),
-      redirect: 'manual',
-    });
-
-    if (!response.ok) {
-      return {
-        healthy: false,
-        error: `HTTP ${response.status}: ${response.statusText}`,
-        suggestion: 'The training service is starting. Please wait 1-2 minutes and try again.',
-      };
-    }
-
-    const data = await response.json();
-    
-    if (data.status !== 'healthy') {
-      return {
-        healthy: false,
-        error: `Service status: ${data.status}`,
-        suggestion: 'Training service is not fully ready. Please wait and retry.',
-      };
-    }
-
-    return { healthy: true };
-    
-  } catch (error) {
-    const err = error as Error;
-    
-    if (err.message.includes('ENOTFOUND') || err.message.includes('getaddrinfo')) {
-      return {
-        healthy: false,
-        error: 'Cannot reach training service (DNS error)',
-        suggestion: 'Make sure external access is enabled in Northflank service settings.',
-      };
-    }
-    
-    if (err.message.includes('ETIMEDOUT') || err.message.includes('timeout')) {
-      return {
-        healthy: false,
-        error: 'Training service timeout',
-        suggestion: 'Service is starting or overloaded. Wait 1-2 minutes and try again.',
-      };
-    }
-    
-    if (err.message.includes('ECONNREFUSED')) {
-      return {
-        healthy: false,
-        error: 'Connection refused',
-        suggestion: 'Training service is not running. Please check Northflank service status.',
-      };
-    }
-
-    return {
-      healthy: false,
-      error: err.message,
-      suggestion: 'Please check Northflank logs for more details.',
-    };
-  }
 }
 
 // ===== GET: Status =====
@@ -628,6 +397,12 @@ export async function DELETE(request: NextRequest) {
       }, { status: 400 });
     }
 
+    if (!user.northflankProjectId) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 400 });
+    }
+
+    // Note: To actually cancel, we need to track runId
+    // For now, just update status
     await db.user.update({
       where: { id: user.id },
       data: {
