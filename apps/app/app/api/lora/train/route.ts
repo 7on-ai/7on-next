@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
       adapter_version: adapterVersion,
       training_id: trainingId,
       postgres_uri: connectionString,
-      base_model: 'mistral',
+      base_model: 'mistralai/Mistral-7B-v0.1',
       output_dir: `/models/adapters/${user.id}/${adapterVersion}`,
     };
 
@@ -309,6 +309,12 @@ function startBackgroundMonitoringWithIntegration(
         consecutiveErrors = 0;
 
         if (!statusResponse.ok) {
+          // ✅ Handle 404 - training ID not found yet
+          if (statusResponse.status === 404) {
+            console.warn(`⚠️  [${trainingId}] Status not found yet (may still be starting)`);
+            continue;
+          }
+          
           console.warn(`⚠️  [${trainingId}] Status check failed: ${statusResponse.status}`);
           continue;
         }
