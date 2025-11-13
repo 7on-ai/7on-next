@@ -1,9 +1,6 @@
 // apps/app/lib/northflank-job.ts
 /**
  * Northflank Job Management for LoRA Training
- * - Trigger user-specific training job
- * - Monitor job run status
- * - Fetch logs
  */
 
 const NORTHFLANK_API_TOKEN = process.env.NORTHFLANK_API_TOKEN!;
@@ -40,7 +37,6 @@ export async function triggerTrainingJob(
 ): Promise<{ runId: string; jobId: string }> {
   const { projectId, userId, adapterVersion, postgresUri, modelName } = params;
   
-  // Job name pattern: user-lora-training (same for all users in their project)
   const jobId = 'user-lora-training';
   
   console.log(`🚀 Triggering training job for user ${userId}`);
@@ -49,9 +45,9 @@ export async function triggerTrainingJob(
   console.log(`   Adapter: ${adapterVersion}`);
   
   try {
-    // Trigger job run with environment overrides
+    // ✅ FIX: ใช้ /runs (พหูพจน์) ไม่ใช่ /run
     const response = await fetch(
-      `${NORTHFLANK_API_BASE}/projects/${projectId}/jobs/${jobId}/run`,
+      `${NORTHFLANK_API_BASE}/projects/${projectId}/jobs/${jobId}/runs`,
       {
         method: 'POST',
         headers: {
@@ -136,7 +132,6 @@ export async function getJobRunStatus(
     const data = await response.json();
     const run = data.data;
     
-    // Map Northflank status to our status
     let status: JobRunStatus['status'] = 'pending';
     
     if (run.status === 'RUNNING') {
@@ -282,8 +277,5 @@ export async function verifyAdapterOutput(
   userId: string,
   adapterVersion: string
 ): Promise<boolean> {
-  // Note: This requires additional Northflank API or direct volume access
-  // For now, we rely on job success status
-  // In production, you might want to add a verification step
   return true;
 }
