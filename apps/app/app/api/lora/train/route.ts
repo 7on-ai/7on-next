@@ -6,7 +6,7 @@ import { auth } from '@clerk/nextjs/server';
 import { database as db } from '@repo/database';
 
 const NORTHFLANK_API_TOKEN = process.env.NORTHFLANK_API_TOKEN!;
-const NORTHFLANK_JOB_ID = 'user-lora-training'; // ต้องตรงกับชื่อ Job ใน Northflank
+const NORTHFLANK_JOB_ID = 'user-lora-training'; // ✅ Confirmed from Northflank UI
 
 // ===== POST: Start Training =====
 export async function POST(request: NextRequest) {
@@ -113,11 +113,32 @@ export async function POST(request: NextRequest) {
       totalSamples: totalData,
     });
 
+    // ✅ Get Job details first to verify it exists
+    console.log(`🔍 Checking job: ${NORTHFLANK_JOB_ID}`);
+    
+    const jobCheckResponse = await fetch(
+      `https://api.northflank.com/v1/projects/${user.northflankProjectId}/jobs/${NORTHFLANK_JOB_ID}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${NORTHFLANK_API_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (!jobCheckResponse.ok) {
+      const errorData = await jobCheckResponse.json();
+      console.error('❌ Job not found:', errorData);
+      throw new Error(`Job '${NORTHFLANK_JOB_ID}' not found in project. Check job name.`);
+    }
+
+    console.log('✅ Job exists');
+
     // ✅ Trigger Northflank Job with DYNAMIC ENV
     console.log('🚀 Triggering Northflank job with dynamic ENV...');
     
     const jobResponse = await fetch(
-      `https://api.northflank.com/v1/projects/${user.northflankProjectId}/jobs/${NORTHFLANK_JOB_ID}/run`,
+      `https://api.northflank.com/v1/projects/${user.northflankProjectId}/jobs/${NORTHFLANK_JOB_ID}/runs`,
       {
         method: 'POST',
         headers: {
