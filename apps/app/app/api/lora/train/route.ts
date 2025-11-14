@@ -1,18 +1,12 @@
 // apps/app/app/api/lora/train/route.ts
-// ✅ UPDATED: ใช้ Northflank Job แทน Ollama Service
+// ✅ FIXED: ส่ง ENV แบบ dynamic ผ่าน API
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { database as db } from '@repo/database';
-import {
-  triggerTrainingJob,
-  getJobRunStatus,
-  getJobRunLogs,
-  cancelJobRun,
-  extractMetadataFromLogs,
-} from '@/lib/northflank-job';
 
 const NORTHFLANK_API_TOKEN = process.env.NORTHFLANK_API_TOKEN!;
+const NORTHFLANK_JOB_ID = 'user-lora-training'; // ต้องตรงกับชื่อ Job ใน Northflank
 
 // ===== POST: Start Training =====
 export async function POST(request: NextRequest) {
@@ -32,11 +26,16 @@ export async function POST(request: NextRequest) {
         goodChannelCount: true,
         badChannelCount: true,
         mclChainCount: true,
+        postgresSchemaInitialized: true,
       },
     });
 
     if (!user?.northflankProjectId) {
       return NextResponse.json({ error: 'Project not found' }, { status: 400 });
+    }
+
+    if (!user.postgresSchemaInitialized) {
+      return NextResponse.json({ error: 'Database not initialized' }, { status: 400 });
     }
 
     // Check if already training
@@ -64,13 +63,20 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Get Postgres connection
+    // ✅ Get REAL Postgres connection string
     console.log('📝 Getting Postgres connection...');
     const connectionString = await getPostgresConnectionString(user.northflankProjectId);
     
     if (!connectionString) {
       throw new Error('Cannot get database connection');
     }
+
+    // Validate connection string format
+    if (connectionString.includes('${refs.') || connectionString.includes('{{')) {
+      throw new Error('Invalid connection string - still contains template variables');
+    }
+
+    console.log('✅ Got valid connection string');
 
     // Auto-approve data
     console.log('📝 Auto-approving data...');
@@ -97,7 +103,7 @@ export async function POST(request: NextRequest) {
     await logTrainingJob(connectionString, {
       userId: user.id,
       jobId: trainingId,
-      jobName: 'user-lora-training',
+      jobName: NORTHFLANK_JOB_ID,
       adapterVersion,
       datasetComposition: {
         good: user.goodChannelCount,
@@ -107,41 +113,60 @@ export async function POST(request: NextRequest) {
       totalSamples: totalData,
     });
 
-    // ✅ Trigger Northflank Job
-    console.log('🚀 Triggering Northflank job...');
+    // ✅ Trigger Northflank Job with DYNAMIC ENV
+    console.log('🚀 Triggering Northflank job with dynamic ENV...');
     
-    let jobRun;
-    try {
-      jobRun = await triggerTrainingJob({
-        projectId: user.northflankProjectId,
-        userId: user.id,
-        adapterVersion,
-        postgresUri: connectionString,
-        modelName: 'TinyLlama/TinyLlama-1.1B-Chat-v1.0',
-      });
+    const jobResponse = await fetch(
+      `https://api.northflank.com/v1/projects/${user.northflankProjectId}/jobs/${NORTHFLANK_JOB_ID}/run`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${NORTHFLANK_API_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          // ✅ ส่ง ENV ตอน runtime แทนการใช้ secret group
+          environmentVariables: {
+            POSTGRES_URI: connectionString,  // ✅ Real connection string
+            USER_ID: user.id,                // ✅ Dynamic user ID
+            MODEL_NAME: 'TinyLlama/TinyLlama-1.1B-Chat-v1.0',
+            ADAPTER_VERSION: adapterVersion, // ✅ Dynamic version
+            OUTPUT_PATH: '/workspace/adapters',
+          },
+        }),
+      }
+    );
 
-      console.log('✅ Job triggered:', jobRun);
-
-    } catch (triggerError) {
-      console.error('❌ Job trigger failed:', triggerError);
+    if (!jobResponse.ok) {
+      const errorData = await jobResponse.json();
+      console.error('❌ Northflank API error:', errorData);
       
       await db.user.update({
         where: { id: user.id },
         data: {
           loraTrainingStatus: 'failed',
-          loraTrainingError: `Failed to start training: ${(triggerError as Error).message}`,
+          loraTrainingError: `Failed to start training: ${errorData.message || 'Unknown error'}`,
           updatedAt: new Date(),
         },
       });
 
       await updateTrainingJobStatus(connectionString, trainingId, {
         status: 'failed',
-        errorMessage: (triggerError as Error).message,
+        errorMessage: errorData.message || 'Failed to trigger job',
         completedAt: new Date(),
       });
 
-      throw triggerError;
+      throw new Error(`Northflank API error: ${errorData.message || jobResponse.statusText}`);
     }
+
+    const jobData = await jobResponse.json();
+    const runId = jobData.data?.id;
+
+    if (!runId) {
+      throw new Error('No run ID returned from Northflank');
+    }
+
+    console.log('✅ Job triggered:', runId);
 
     // Start background monitoring
     startBackgroundMonitoring(
@@ -150,7 +175,7 @@ export async function POST(request: NextRequest) {
       adapterVersion,
       connectionString,
       user.northflankProjectId,
-      jobRun.runId
+      runId
     );
 
     return NextResponse.json({
@@ -158,7 +183,7 @@ export async function POST(request: NextRequest) {
       status: 'training',
       trainingId,
       adapterVersion,
-      runId: jobRun.runId,
+      runId,
       message: 'Training started successfully',
       estimatedTime: '10-30 minutes',
       stats: {
@@ -194,7 +219,6 @@ function startBackgroundMonitoring(
     let attempts = 0;
     let consecutiveErrors = 0;
     const maxConsecutiveErrors = 5;
-    const jobId = 'user-lora-training';
     
     while (attempts < maxAttempts) {
       try {
@@ -204,21 +228,43 @@ function startBackgroundMonitoring(
         console.log(`🔍 [${runId}] Check ${attempts}/${maxAttempts}`);
         
         // Get job run status
-        const status = await getJobRunStatus(projectId, jobId, runId);
+        const statusResponse = await fetch(
+          `https://api.northflank.com/v1/projects/${projectId}/jobs/${NORTHFLANK_JOB_ID}/runs/${runId}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${NORTHFLANK_API_TOKEN}`,
+            },
+          }
+        );
+
+        if (!statusResponse.ok) {
+          throw new Error(`Status check failed: ${statusResponse.statusText}`);
+        }
+
+        const statusData = await statusResponse.json();
+        const status = statusData.data?.status;
         
         consecutiveErrors = 0; // Reset on success
         
-        console.log(`📊 [${runId}] Status: ${status.status}`);
+        console.log(`📊 [${runId}] Status: ${status}`);
         
-        if (status.status === 'succeeded') {
+        if (status === 'COMPLETED') {
           console.log(`✅ [${runId}] Training completed!`);
           
           // Get logs to extract metadata
-          const logs = await getJobRunLogs(projectId, jobId, runId, 5000);
-          const metadata = extractMetadataFromLogs(logs.logs);
-          
-          if (metadata) {
-            console.log('📊 Training metadata:', metadata);
+          const logsResponse = await fetch(
+            `https://api.northflank.com/v1/projects/${projectId}/jobs/${NORTHFLANK_JOB_ID}/runs/${runId}/logs?tail=5000`,
+            {
+              headers: {
+                'Authorization': `Bearer ${NORTHFLANK_API_TOKEN}`,
+              },
+            }
+          );
+
+          let metadata = {};
+          if (logsResponse.ok) {
+            const logsData = await logsResponse.json();
+            metadata = extractMetadataFromLogs(logsData.data?.logs || []);
           }
           
           // Update database
@@ -241,12 +287,10 @@ function startBackgroundMonitoring(
           break;
         }
         
-        if (status.status === 'failed') {
+        if (status === 'FAILED') {
           console.error(`❌ [${runId}] Training failed`);
           
-          // Get logs for error details
-          const logs = await getJobRunLogs(projectId, jobId, runId, 1000);
-          const errorMessage = status.error || 'Training failed - check logs';
+          const errorMessage = statusData.data?.error || 'Training failed - check logs';
           
           await db.user.update({
             where: { id: userId },
@@ -266,7 +310,7 @@ function startBackgroundMonitoring(
           break;
         }
         
-        if (status.status === 'cancelled') {
+        if (status === 'CANCELLED') {
           console.log(`⚠️ [${runId}] Training cancelled`);
           
           await db.user.update({
@@ -401,8 +445,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Project not found' }, { status: 400 });
     }
 
-    // Note: To actually cancel, we need to track runId
-    // For now, just update status
+    // Update status (actual cancellation would require tracking runId)
     await db.user.update({
       where: { id: user.id },
       data: {
@@ -521,29 +564,74 @@ async function getPostgresConnectionString(projectId: string): Promise<string | 
   try {
     const addonsResponse = await fetch(
       `https://api.northflank.com/v1/projects/${projectId}/addons`,
-      { headers: { Authorization: `Bearer ${NORTHFLANK_API_TOKEN}` } }
+      { 
+        headers: { 
+          Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
+          'Content-Type': 'application/json',
+        } 
+      }
     );
 
-    if (!addonsResponse.ok) return null;
+    if (!addonsResponse.ok) {
+      console.error('Failed to get addons:', addonsResponse.statusText);
+      return null;
+    }
 
     const addonsData = await addonsResponse.json();
     const postgresAddon = addonsData.data?.addons?.find(
       (a: any) => a.spec?.type === 'postgresql'
     );
 
-    if (!postgresAddon) return null;
+    if (!postgresAddon) {
+      console.error('No PostgreSQL addon found');
+      return null;
+    }
 
     const credentialsResponse = await fetch(
       `https://api.northflank.com/v1/projects/${projectId}/addons/${postgresAddon.id}/credentials`,
-      { headers: { Authorization: `Bearer ${NORTHFLANK_API_TOKEN}` } }
+      { 
+        headers: { 
+          Authorization: `Bearer ${NORTHFLANK_API_TOKEN}`,
+          'Content-Type': 'application/json',
+        } 
+      }
     );
 
-    if (!credentialsResponse.ok) return null;
+    if (!credentialsResponse.ok) {
+      console.error('Failed to get credentials:', credentialsResponse.statusText);
+      return null;
+    }
 
     const credentials = await credentialsResponse.json();
-    return credentials.data?.envs?.EXTERNAL_POSTGRES_URI || null;
+    const uri = credentials.data?.envs?.EXTERNAL_POSTGRES_URI || 
+                credentials.data?.envs?.POSTGRES_URI;
+
+    if (!uri) {
+      console.error('No POSTGRES_URI found in credentials');
+      return null;
+    }
+
+    return uri;
     
   } catch (error) {
+    console.error('Error getting connection string:', error);
     return null;
+  }
+}
+
+function extractMetadataFromLogs(logs: any[]): any {
+  try {
+    const logText = logs.map(l => l.message || '').join('\n');
+    
+    const metadataMatch = logText.match(/===METADATA_START===([\s\S]*?)===METADATA_END===/);
+    
+    if (metadataMatch) {
+      return JSON.parse(metadataMatch[1]);
+    }
+    
+    return {};
+  } catch (error) {
+    console.error('Failed to extract metadata:', error);
+    return {};
   }
 }
