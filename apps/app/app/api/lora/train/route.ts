@@ -146,8 +146,8 @@ export async function POST(request: NextRequest) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          // ✅ ส่ง ENV ตอน runtime แทนการใช้ secret group
-          environmentVariables: {
+          // ✅ ส่ง ENV ตอน runtime (ต้องใช้ runtimeEnvironment ไม่ใช่ environmentVariables)
+          runtimeEnvironment: {
             POSTGRES_URI: connectionString,  // ✅ Real connection string
             USER_ID: user.id,                // ✅ Dynamic user ID
             MODEL_NAME: 'TinyLlama/TinyLlama-1.1B-Chat-v1.0',
